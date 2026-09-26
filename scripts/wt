@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Launcher for the wiki-trends CLI. Runs TypeScript directly with Node's
+# built-in type stripping (Node >= 22.18), installs locked deps on first run.
+set -euo pipefail
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+ver="$(node -p 'process.versions.node' 2>/dev/null || echo 0.0.0)"
+major="${ver%%.*}"; rest="${ver#*.}"; minor="${rest%%.*}"
+if [ "$major" -lt 22 ] || { [ "$major" -eq 22 ] && [ "$minor" -lt 18 ]; }; then
+  echo "{\"ok\":false,\"error\":\"Node >= 22.18 required, found $ver\"}" >&2
+  exit 3
+fi
+
+if [ ! -d "$DIR/node_modules/pdfkit" ]; then
+  (cd "$DIR" && npm ci --omit=dev --no-audit --no-fund --silent) >&2
+fi
+
+exec node --disable-warning=ExperimentalWarning "$DIR/scripts/src/cli.ts" "$@"

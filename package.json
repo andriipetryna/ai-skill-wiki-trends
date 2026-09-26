@@ -1,0 +1,24 @@
+{
+  "name": "wiki-trends",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Agent Skill (MVP): Wikipedia pageviews for a topic across languages, chart and one-page PDF",
+  "type": "module",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "wt": "node scripts/src/cli.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dejavu-fonts-ttf": "2.37.3",
+    "pdfkit": "0.17.2",
+    "svg-to-pdfkit": "0.1.8",
+    "vega": "6.2.0",
+    "vega-lite": "6.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.0",
+    "@types/pdfkit": "0.17.3",
+    "typescript": "5.9.3"
+  }
+}

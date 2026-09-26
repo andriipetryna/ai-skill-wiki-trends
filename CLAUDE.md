@@ -1,0 +1,56 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+`**wiki-trends**` is an **Agent Skill** (see `SKILL.md`), not a general app. It is a bundled CLI that, for a topic, finds the matching Wikipedia articles across language editions, pulls monthly pageviews from the Wikimedia Pageviews API, computes period-over-period change, and optionally renders a chart and a one-page PDF report. `SKILL.md` is the contract the consuming agent reads; keep it in sync with CLI behaviour and the `metadata.version` / `VERSION` fields.
+
+## Commands
+
+```bash
+# Run the CLI (bash launcher — checks Node >= 22.18, runs `npm ci --omit=dev` on first run)
+scripts/wt analyze --topic "Intermittent fasting" --langs pl,cs --years 2
+scripts/wt resolve --topic "Astronomy" --langs uk,pl
+scripts/wt --help
+
+npm run typecheck   # tsc --noEmit — the only check; there are no tests yet
+npm run wt -- ...   # same as scripts/wt but without the Node-version guard / auto-install
+```
+
+- **No build step.** TypeScript runs directly on Node >= 22.18 via native type stripping. `.ts` files import each other with explicit `.ts` extensions (`allowImportingTsExtensions`, `verbatimModuleSyntax`, `erasableSyntaxOnly` — so no enums/namespaces/param properties).
+- `WT_CONTACT` (email or URL) should be set; it goes into the Wikimedia `User-Agent`. Without it requests may be blocked (HTTP 403).
+- There are no tests, no linter, and no caching — deliberately deferred (see README "next steps").
+
+## Architecture
+
+Pipeline lives in `scripts/src/`, entry point `cli.ts`. Data flows one direction:
+
+```
+cli.ts        parse args, own the period window, write output files, format the stdout JSON
+  └─ resolve.ts   topic (title or Qxxx) → Wikidata QID → article title per language
+  └─ collect.ts   articles → monthly views → 12-month period totals + changePct
+       └─ client.ts   all HTTP: Pageviews REST, MediaWiki Action API, Wikidata; retry, no cache
+  └─ charts.ts   perLanguage → Vega-Lite → SVG string
+  └─ report.ts   SVG + data → one-page A4 PDF (pdfkit + svg-to-pdfkit)
+dates.ts        Month = 'YYYY-MM' UTC string; all date math goes through here
+```
+
+Key invariants — respect these when editing:
+
+- **Every command prints exactly one JSON object to stdout** and nothing else (logs/errors go to stderr). Callers parse stdout. `ok: true|false` gates the shape.
+- **Complete months only.** `lastCompleteMonth` steps back so in-progress months are never fetched; `FIRST_AVAILABLE_MONTH` (2015-07) clamps the start. Periods are consecutive 12-month blocks ending at `to` (`splitPeriods`); `changePct` is last block vs previous.
+- **Multiple `--topic` = a basket**: their monthly views are summed per language.
+- **`--article lang="Title"`** overrides the Wikidata-resolved article for that language (used after a user picks a `suggestion`).
+- Failure modes are typed: `ResolveError` (ambiguous / not-found topic → exit 2, returns `candidates`) and `ApiError` (network/HTTP → exit 1). `cli.ts` maps them to `{ok:false, error, hint}`.
+- Language handling: Wikipedia code → Wikidata sitelink key via `siteFor` (`uk` → `ukwiki`). Ukrainian is `uk`, not `ua`.
+
+## Output
+
+Each `analyze` run writes to `output/<YYYYMMDD-HHMMSS>/`: `data.json` (full data incl. per-month `monthly` series), `chart.svg`, and `report-<lang>.pdf` if `--report`. `output/` is gitignored. Note the stdout JSON **strips the `monthly` arrays** (kept only in `data.json`) to keep the agent's context small.
+
+## Report/chart notes
+
+- Fonts: bundled DejaVu (`dejavu-fonts-ttf`) for Cyrillic support; PDF registers them as `"R"`/`"B"`.
+- Report + chart are bilingual (`en`/`uk`) via the `LABELS` table in `report.ts`; `--report-lang` selects, default `en`.
+- Never compare raw view counts across languages in output — editions differ hugely in size; compare `changePct`. This rule is enforced in `SKILL.md`'s answer guidance.
