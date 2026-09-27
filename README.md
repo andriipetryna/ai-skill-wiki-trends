@@ -8,7 +8,7 @@ This is a minimum viable version: no trend metrics, no caching and no tests. The
 
 ```bash
 node --version                        # requires >= 22.18 (TypeScript runs natively, no build step)
-export WT_CONTACT=you@example.com     # Wikimedia requires a contact in the User-Agent
+export WT_CONTACT=you@example.com     # contact in the Wikimedia User-Agent (optional; defaults to skill@gmail.com)
 scripts/wt analyze --topic "Intermittent fasting" --langs pl,cs --years 2 --report --report-lang uk
 ```
 

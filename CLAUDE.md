@@ -19,7 +19,7 @@ npm run wt -- ...   # same as scripts/wt but without the Node-version guard / au
 ```
 
 - **No build step.** TypeScript runs directly on Node >= 22.18 via native type stripping. `.ts` files import each other with explicit `.ts` extensions (`allowImportingTsExtensions`, `verbatimModuleSyntax`, `erasableSyntaxOnly` — so no enums/namespaces/param properties).
-- `WT_CONTACT` (email or URL) should be set; it goes into the Wikimedia `User-Agent`. Without it requests may be blocked (HTTP 403).
+- `WT_CONTACT` (email or URL) goes into the Wikimedia `User-Agent`; unset or empty → `skill@gmail.com` (`DEFAULT_CONTACT` in `client.ts`). Set your own to avoid being blocked (HTTP 403) or rate-limited along with everyone else using the default.
 - There are no tests, no linter, and no caching — deliberately deferred (see README "next steps").
 
 ## Architecture

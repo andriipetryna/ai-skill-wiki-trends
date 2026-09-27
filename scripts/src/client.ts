@@ -11,10 +11,12 @@ export class ApiError extends Error {
 }
 
 const REST = "https://wikimedia.org/api/rest_v1/metrics/pageviews";
+/** used when WT_CONTACT is unset or empty */
+const DEFAULT_CONTACT = "skill@gmail.com";
 
 /** Wikimedia requires a descriptive User-Agent with contact info. */
 function userAgent(): string {
-  const contact = process.env.WT_CONTACT ?? "contact not set; set WT_CONTACT env var";
+  const contact = process.env.WT_CONTACT || DEFAULT_CONTACT;
   return `wiki-trends-skill/0.3 (${contact})`;
 }
 

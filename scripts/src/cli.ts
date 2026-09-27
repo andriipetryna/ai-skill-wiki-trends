@@ -157,7 +157,7 @@ async function main(argv: string[]): Promise<{ code: number; output: Output }> {
       };
     }
     if (e instanceof ApiError) {
-      const hint = e.status === 403 ? "Blocked: set WT_CONTACT (email/URL) for the User-Agent and check network access." : "Retry later.";
+      const hint = e.status === 403 ? "Blocked: set WT_CONTACT to your own email/URL for the User-Agent (the default one may be blocked) and check network access." : "Retry later.";
       return fail(1, e.message, hint);
     }
     return fail(1, (e as Error).message);
