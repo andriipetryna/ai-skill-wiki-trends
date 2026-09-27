@@ -1,6 +1,11 @@
+import { join, resolve } from "node:path";
+import { Resvg } from "@resvg/resvg-js";
 import * as vega from "vega";
 import { compile, type TopLevelSpec } from "vega-lite";
 import type { LanguageResult } from "./collect.ts";
+
+// Bundled DejaVu fonts (Cyrillic coverage), shared by the PNG and the PDF report
+export const FONT_DIR = join(resolve(import.meta.dirname, "../.."), "node_modules", "dejavu-fonts-ttf", "ttf");
 
 // Categorical palette in fixed order (colour-vision-deficiency safe on white)
 export const PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"];
@@ -40,4 +45,18 @@ export async function renderViewsChart(perLanguage: LanguageResult[], langs: str
   const svg = await view.toSVG();
   view.finalize();
   return svg;
+}
+
+/** Rasterises the chart SVG to a 2x PNG, which chat hosts and image viewers can display. */
+export function svgToPng(svg: string): Buffer {
+  const resvg = new Resvg(svg, {
+    fitTo: { mode: "zoom", value: 2 },
+    background: "#ffffff",
+    font: {
+      fontFiles: [join(FONT_DIR, "DejaVuSans.ttf"), join(FONT_DIR, "DejaVuSans-Bold.ttf")],
+      loadSystemFonts: false,
+      defaultFontFamily: "DejaVu Sans",
+    },
+  });
+  return resvg.render().asPng();
 }

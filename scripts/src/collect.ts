@@ -4,7 +4,7 @@ import { articleMonthly } from "./client.ts";
 import { monthRange, type Month } from "./dates.ts";
 import { resolveTopic, searchEdition, type Candidate, type Resolution } from "./resolve.ts";
 
-export const VERSION = "0.3.0";
+export const VERSION = "0.4.0";
 
 export interface CollectParams {
   topics: string[];

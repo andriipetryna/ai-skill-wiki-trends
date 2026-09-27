@@ -3,13 +3,12 @@ import { createWriteStream } from "node:fs";
 import { join, resolve } from "node:path";
 import PDFDocument from "pdfkit";
 import SVGtoPDF from "svg-to-pdfkit";
-import { PALETTE } from "./charts.ts";
+import { FONT_DIR, PALETTE } from "./charts.ts";
 import type { LanguageResult } from "./collect.ts";
 import type { Resolution } from "./resolve.ts";
 
 export type UiLang = "en" | "uk";
 
-const FONT_DIR = join(resolve(import.meta.dirname, "../.."), "node_modules", "dejavu-fonts-ttf", "ttf");
 const INK = "#0b0b0b";
 const INK_2 = "#52514e";
 const MUTED = "#8a8984";

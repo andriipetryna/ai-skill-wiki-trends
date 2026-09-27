@@ -31,7 +31,7 @@ cli.ts        parse args, own the period window, write output files, format the 
   └─ resolve.ts   topic (title or Qxxx) → Wikidata QID → article title per language
   └─ collect.ts   articles → monthly views → 12-month period totals + changePct
        └─ client.ts   all HTTP: Pageviews REST, MediaWiki Action API, Wikidata; retry, no cache
-  └─ charts.ts   perLanguage → Vega-Lite → SVG string
+  └─ charts.ts   perLanguage → Vega-Lite → SVG string; svgToPng via resvg
   └─ report.ts   SVG + data → one-page A4 PDF (pdfkit + svg-to-pdfkit)
 dates.ts        Month = 'YYYY-MM' UTC string; all date math goes through here
 ```
@@ -47,7 +47,7 @@ Key invariants — respect these when editing:
 
 ## Output
 
-Each `analyze` run writes to `output/<YYYYMMDD-HHMMSS>/`: `data.json` (full data incl. per-month `monthly` series), `chart.svg`, and `report-<lang>.pdf` if `--report`. `output/` is gitignored. Note the stdout JSON **strips the `monthly` arrays** (kept only in `data.json`) to keep the agent's context small.
+Each `analyze` run writes to `output/<YYYYMMDD-HHMMSS>/` (or `<DIR>/wiki-trends-<stamp>/` with `--out-dir DIR`): `data.json` (full data incl. per-month `monthly` series), `chart.svg`, `chart.png` (resvg, DejaVu fonts — this is what the agent displays in chat, since hosts can't show SVG), and `report-<lang>.pdf` if `--report`. SKILL.md step 5 requires the agent to Read the PNG and embed/link the chart and PDF in every reply. `output/` is gitignored. Note the stdout JSON **strips the `monthly` arrays** (kept only in `data.json`) to keep the agent's context small.
 
 ## Report/chart notes
 

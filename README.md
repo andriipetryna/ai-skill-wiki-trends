@@ -28,13 +28,13 @@ wiki-trends/
         ├── client.ts     # Wikimedia REST, MediaWiki API, Wikidata; retry on 429/5xx
         ├── collect.ts    # monthly views, a "basket" of several topics, 12-month periods and % change
         ├── dates.ts      # month handling
-        ├── charts.ts     # Vega-Lite → SVG
+        ├── charts.ts     # Vega-Lite → SVG, resvg → PNG
         └── report.ts     # pdfkit → one-page PDF (en/uk, Cyrillic via DejaVu)
 ```
 
-The results of each run are saved in `output/<timestamp>/`:
+The results of each run are saved in `output/<timestamp>/` (or `<DIR>/wiki-trends-<timestamp>/` with `--out-dir DIR`):
 - `data.json` — all data, including the per-month series;
-- `chart.svg` — the chart;
+- `chart.svg` and `chart.png` — the chart (the PNG is what the agent shows in chat);
 - `report-<lang>.pdf` — the report, if run with `--report`.
 
 ## Commands
@@ -42,7 +42,7 @@ The results of each run are saved in `output/<timestamp>/`:
 | Command | What it does |
 |---|---|
 | `resolve --topic T --langs pl,cs` | shows which articles match the topic in each language |
-| `analyze --topic T [--topic T2] --langs pl,cs [--years N \| --months N \| --from YYYY-MM --to YYYY-MM] [--article pl="Tytuł"] [--report --report-lang uk --title ... --notes ...]` | data, chart, optional PDF |
+| `analyze --topic T [--topic T2] --langs pl,cs [--years N \| --months N \| --from YYYY-MM --to YYYY-MM] [--article pl="Tytuł"] [--report --report-lang uk --title ... --notes ...] [--out-dir DIR]` | data, chart (SVG+PNG), optional PDF |
 
 What `analyze` returns for each language:
 - `totalViews` and `avgMonthlyViews` — view volume;
