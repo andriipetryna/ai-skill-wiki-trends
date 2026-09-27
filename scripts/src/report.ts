@@ -3,7 +3,7 @@ import { createWriteStream } from "node:fs";
 import { join, resolve } from "node:path";
 import PDFDocument from "pdfkit";
 import SVGtoPDF from "svg-to-pdfkit";
-import { FONT_DIR, PALETTE } from "./charts.ts";
+import { FONT_DIR, langColors } from "./charts.ts";
 import type { LanguageResult } from "./collect.ts";
 import { WEIGHT_KEYS, type RankRow, type Weights } from "./metrics/ranking.ts";
 import type { Resolution } from "./resolve.ts";
@@ -130,6 +130,7 @@ export async function writeReport(r: ReportInput): Promise<string> {
   doc.moveTo(X, y).lineTo(X + W, y).lineWidth(0.6).strokeColor(RULE).stroke();
   y += 4;
   // By rank; languages without a rank (no data) keep their --langs order at the end (the sort is stable)
+  const colors = langColors(r.perLanguage, r.langs);
   const rankOf = new Map(r.ranking.map((x) => [x.lang, x.rank]));
   const rows = [...r.perLanguage].sort((a, b) => (rankOf.get(a.lang) ?? Infinity) - (rankOf.get(b.lang) ?? Infinity));
   for (const row of rows.slice(0, 12)) {
@@ -149,7 +150,7 @@ export async function writeReport(r: ReportInput): Promise<string> {
         : [row.lang, row.articles.join(" + ") || "—", "—", "—", "—", "—", "—", row.status === "no_article" ? t.noArticle : t.noData, "—"];
     cx = X;
     cells.forEach((c, i) => {
-      doc.font(i === 0 ? "B" : "R").fontSize(8.5).fillColor(i === 0 ? PALETTE[r.langs.indexOf(row.lang) % PALETTE.length]! : INK);
+      doc.font(i === 0 ? "B" : "R").fontSize(8.5).fillColor(i === 0 ? (colors.get(row.lang) ?? MUTED) : INK);
       doc.text(fit(doc, c, widths[i]! - 4), cx + 2, y, { width: widths[i]! - 4, align: aligns[i], lineBreak: false });
       cx += widths[i]!;
     });

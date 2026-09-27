@@ -10,9 +10,19 @@ export const FONT_DIR = join(resolve(import.meta.dirname, "../.."), "node_module
 // Categorical palette in fixed order (colour-vision-deficiency safe on white)
 export const PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"];
 
+/**
+ * Colour per language that has a series to plot, in --langs order. Shared by the chart and the report table,
+ * so both give a language the same colour; languages without data get none.
+ */
+export function langColors(perLanguage: LanguageResult[], langs: string[]): Map<string, string> {
+  const plotted = langs.filter((l) => perLanguage.find((r) => r.lang === l)?.monthly.length);
+  return new Map(plotted.map((l, i) => [l, PALETTE[i % PALETTE.length]!]));
+}
+
 /** Line chart of monthly share per million pageviews of the edition, per language, with rings on spike months. Returns an SVG string. */
 export async function renderViewsChart(perLanguage: LanguageResult[], langs: string[], yTitle: string): Promise<string | null> {
-  const ordered = langs.filter((l) => perLanguage.find((r) => r.lang === l)?.monthly.length);
+  const colors = langColors(perLanguage, langs);
+  const ordered = [...colors.keys()];
   if (!ordered.length) return null;
   const values = ordered.flatMap((lang) => perLanguage.find((r) => r.lang === lang)!.monthly.map((p) => ({ lang, ...p })));
 
@@ -40,7 +50,7 @@ export async function renderViewsChart(perLanguage: LanguageResult[], langs: str
       color: {
         field: "lang",
         type: "nominal",
-        scale: { domain: ordered, range: PALETTE.slice(0, ordered.length) },
+        scale: { domain: ordered, range: [...colors.values()] },
         legend: ordered.length > 1 ? { orient: "top", title: null, symbolType: "stroke", symbolStrokeWidth: 3 } : null,
       },
     },
