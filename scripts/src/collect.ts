@@ -4,7 +4,7 @@ import { monthRange, type Month } from "./dates.ts";
 import { computeLanguageMetrics, type LanguageMetrics, type MetricPoint } from "./metrics/index.ts";
 import { resolveTopic, searchEdition, type Candidate, type Resolution } from "./resolve.ts";
 
-export const VERSION = "0.7.0";
+export const VERSION = "0.8.0";
 
 export interface CollectParams {
   topics: string[];

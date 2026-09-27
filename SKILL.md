@@ -3,7 +3,7 @@ name: wiki-trends
 description: Fetch and compare Wikipedia pageviews for a topic across language editions (Wikimedia Pageviews API), with a chart and a one-page PDF report. Use when a user asks whether interest in a topic is growing, compares interest between languages, or wants a shareable report on topic interest from Wikipedia.
 compatibility: Requires Node.js >= 22.18 and network access to wikimedia.org, wikipedia.org, wikidata.org and the npm registry (first run only).
 metadata:
-  version: "0.7.0"
+  version: "0.8.0"
 ---
 
 # Wikipedia interest trends (MVP)
@@ -32,7 +32,8 @@ The first run installs dependencies automatically (`npm ci`, ~30 s). The command
    - `candidates` present: the topic is ambiguous. Show the candidates to the user, ask which one they mean, and rerun with `--topic "<exact title>"` or `--topic Q...`.
    - Anything else: report `error` and `hint` to the user.
 4. **If `ok` is true, answer from the JSON.**
-   - `metrics.yoy.sharePct` = change of the topic's share of edition traffic, last 12 months vs the previous 12. `viewsPct` (raw views) and `editionPct` (whole edition) explain differences: if the edition shrinks, raw views can fall while interest (share) grows.
+   - `metrics.yoy.sharePct` = change of the topic's share of edition traffic, last 12 months vs the previous 12, with one-off spikes excluded. `viewsPct` (raw views, spikes excluded) and `editionPct` (whole edition) explain differences: if the edition shrinks, raw views can fall while interest (share) grows.
+   - If `metrics.spikes` is non-empty, name the months: these are one-off events (news etc.) and are excluded from YoY and trend. `xBaseline` is how many times above the usual level that month was. If `yoy.sharePctWithSpikes` differs a lot from `yoy.sharePct`, say that the apparent change was driven by spikes. The chart marks spike months with rings.
    - If `yoy.method` is `second_half_vs_first_half`, say the period is shorter than 2 years, so seasonality is not controlled.
    - `metrics.yoy` is null when there is nothing to compare with (e.g. the article is new and the previous period has no views): say so, don't guess a change.
    - `avgMonthlyViews`, `totalViews` and `periods` (12-month totals) show volume.

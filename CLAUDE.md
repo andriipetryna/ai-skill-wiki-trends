@@ -32,8 +32,8 @@ cli.ts        parse args, own the period window, write output files, format the 
   └─ collect.ts   articles (+ their redirects) + edition traffic → monthly views → 12-month period totals + metrics
        └─ client.ts   all HTTP: Pageviews REST (per-article, aggregate), MediaWiki Action API (incl. redirects), Wikidata; retry, no cache
        └─ metrics/index.ts   computeLanguageMetrics(): applies metrics in order, rounds at the output boundary
-            └─ stats.ts (median/mean/mad/normalCdf/round/safeLog), normalize.ts (share per million), yoy.ts (periodChange), config.ts (thresholds)
-  └─ charts.ts   perLanguage → Vega-Lite (sharePerMillion) → SVG string; svgToPng via resvg
+            └─ stats.ts (median/mean/mad/normalCdf/round/safeLog), normalize.ts (share per million), yoy.ts (periodChange), spikes.ts (rollingMedian/detectSpikes), config.ts (thresholds)
+  └─ charts.ts   perLanguage → Vega-Lite (sharePerMillion line + rings on spike months) → SVG string; svgToPng via resvg
   └─ report.ts   SVG + data → one-page A4 PDF (pdfkit + svg-to-pdfkit)
 dates.ts        Month = 'YYYY-MM' UTC string; all date math goes through here
 ```
@@ -44,7 +44,8 @@ Key invariants — respect these when editing:
 - **Complete months only.** `lastCompleteMonth` steps back so in-progress months are never fetched; `FIRST_AVAILABLE_MONTH` (2015-07) clamps the start. Periods are consecutive 12-month blocks ending at `to` (`splitPeriods`), kept as transparent sums.
 - **Multiple `--topic` = a basket**: their monthly views are summed per language.
 - **Normalisation base**: for every language with an article, `editionMonthly` fetches the whole edition's user pageviews; 404 there is an `ApiError`. `metrics.sharePerMillion` = views / edition × 1e6 (edition 0 → 0). `metrics: null` for `no_article` / `no_data`.
-- **YoY** (`metrics.yoy`): `periodChange` compares the sum of the last 12 months with the previous 12 (n ≥ 24, earlier months ignored) or second half vs first half (6 ≤ n < 24, no seasonality control); `null` if shorter or the base is 0. `sharePct` (on share, the headline) is computed first; `yoy` is `null` whenever it is, and `viewsPct` / `editionPct` give raw-views and whole-edition context.
+- **YoY** (`metrics.yoy`): `periodChange` compares the sum of the last 12 months with the previous 12 (n ≥ 24, earlier months ignored) or second half vs first half (6 ≤ n < 24, no seasonality control); `null` if shorter or the base is 0. `sharePct` (on the spike-cleaned share, the headline) is computed first; `yoy` is `null` whenever it is. `sharePctWithSpikes` (on share as is), `viewsPct` (cleaned views) and `editionPct` give context.
+- **Spikes** (`metrics.spikes`, `monthly[].spike`): `detectSpikes` runs on **raw views** first: 7-month centred rolling median as baseline, robust z-score (MAD) of log residuals > 3.5 **and** ≥ 1.8× baseline; upward only. `cleaned` replaces spikes with the baseline and feeds YoY (and later the trend); `sharePerMillion.median/last12Avg` stay on the raw share. Output lists the top 5 by ratio; the chart draws rings on every spike month, and the report caption about rings appears only when there are some.
 - **Metric functions are pure** (`scripts/src/metrics/`): number arrays in, numbers out, full precision; rounding only in `metrics/index.ts`. Thresholds go in `metrics/config.ts`. Specs for upcoming metrics are in `.specs/`.
 - **Redirects** (on by default, `--no-redirects` turns off): per language, each article's ns-0 redirects (≤ 25 per article, `client.redirects`) are added to the title set (deduplicated) and their views summed in; `redirectsIncluded` counts them. A failed redirects lookup is logged to stderr and skipped, never fatal. The report caveat follows the flag (`redirectsCaveat`).
 - **`--article lang="Title"`** overrides the Wikidata-resolved article for that language (used after a user picks a `suggestion`).

@@ -10,7 +10,7 @@ export const FONT_DIR = join(resolve(import.meta.dirname, "../.."), "node_module
 // Categorical palette in fixed order (colour-vision-deficiency safe on white)
 export const PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"];
 
-/** Line chart of monthly share per million pageviews of the edition, per language. Returns an SVG string. */
+/** Line chart of monthly share per million pageviews of the edition, per language, with rings on spike months. Returns an SVG string. */
 export async function renderViewsChart(perLanguage: LanguageResult[], langs: string[], yTitle: string): Promise<string | null> {
   const ordered = langs.filter((l) => perLanguage.find((r) => r.lang === l)?.monthly.length);
   if (!ordered.length) return null;
@@ -29,7 +29,11 @@ export async function renderViewsChart(perLanguage: LanguageResult[], langs: str
       legend: { labelColor: "#0b0b0b", labelFontSize: 10 },
     },
     data: { values },
-    mark: { type: "line", strokeWidth: 2, interpolate: "monotone" },
+    // Both layers share one encoding (and so one colour scale and legend); rings mark months excluded from YoY and trend
+    layer: [
+      { mark: { type: "line", strokeWidth: 2, interpolate: "monotone" } },
+      { transform: [{ filter: "datum.spike" }], mark: { type: "point", size: 70, strokeWidth: 2, filled: false } },
+    ],
     encoding: {
       x: { field: "month", type: "temporal", timeUnit: "yearmonth", title: null, axis: { format: "%b %Y", labelAngle: 0, tickCount: 6, grid: false } },
       y: { field: "sharePerMillion", type: "quantitative", title: yTitle, axis: { gridColor: "#e6e5e1", tickCount: 5 } },

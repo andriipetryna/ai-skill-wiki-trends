@@ -26,6 +26,7 @@ export const LABELS = {
     noArticle: "no article",
     noData: "no data",
     yTitle: "Views per million pageviews of the edition",
+    spikeCaption: "Rings = one-off spikes, excluded from YoY and trend.",
     footer: "Data: Wikimedia Pageviews API (agent=user, all-access). YoY = last 12 months vs the previous 12, on share per million.",
     caveatList: [
       "Pageviews show curiosity, not willingness to pay: a signal for further validation.",
@@ -49,6 +50,7 @@ export const LABELS = {
     noArticle: "немає статті",
     noData: "немає даних",
     yTitle: "Переглядів на мільйон переглядів розділу",
+    spikeCaption: "Кільця = разові сплески, виключені з рік-до-року і тренду.",
     footer: "Дані: Wikimedia Pageviews API (agent=user, all-access). Рік-до-року = останні 12 міс. проти попередніх 12, на частці на мільйон.",
     caveatList: [
       "Перегляди відображають цікавість, а не готовність платити: це сигнал для подальшої перевірки.",
@@ -146,7 +148,12 @@ export async function writeReport(r: ReportInput): Promise<string> {
     });
     const h = Math.min(280, (W * sh) / sw);
     SVGtoPDF(doc, svg, X, y, { width: (h * sw) / sh, height: h, fontCallback: (_f: string, bold: boolean) => (bold ? "B" : "R") });
-    y += h + 10;
+    y += h + 2;
+    if (r.perLanguage.some((x) => x.metrics?.spikes.length)) {
+      doc.font("R").fontSize(7.5).fillColor(MUTED).text(t.spikeCaption, X, y, { width: W });
+      y = doc.y;
+    }
+    y += 8;
   }
 
   // Optional agent-written interpretation, clearly labelled
