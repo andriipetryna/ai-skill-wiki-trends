@@ -105,7 +105,7 @@ export async function collect(p: CollectParams): Promise<{ resolution: Resolutio
         editionMonthly(lang, p.from, p.to),
         ...[...all].map((t) => articleMonthly(lang, t, p.from, p.to)),
       ]);
-      const views = months.map((m) => series.reduce((acc, s) => acc + (s?.get(m) ?? 0), 0));
+      const views = sumSeries(months, series);
       if (views.every((v) => v === 0)) return { ...empty, redirectsIncluded, status: "no_data" };
 
       const total = views.reduce((a, b) => a + b, 0);
@@ -130,7 +130,13 @@ export async function collect(p: CollectParams): Promise<{ resolution: Resolutio
   return { resolution, perLanguage, ranking };
 }
 
-function splitPeriods(months: Month[], views: number[]): Period[] {
+/** Basket: views of several titles summed per month; null (no data) and missing months count as 0. */
+export function sumSeries(months: readonly Month[], series: ReadonlyArray<ReadonlyMap<Month, number> | null>): number[] {
+  return months.map((m) => series.reduce((acc, s) => acc + (s?.get(m) ?? 0), 0));
+}
+
+/** Consecutive blocks ending at the last month: 12 months if n >= 24, else two halves; leftover leading months are dropped. */
+export function splitPeriods(months: readonly Month[], views: readonly number[]): Period[] {
   const n = months.length;
   const size = n >= 24 ? 12 : Math.floor(n / 2);
   const out: Period[] = [];

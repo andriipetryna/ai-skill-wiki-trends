@@ -1,20 +1,15 @@
 // CLI entry point. Every command prints exactly one JSON object to stdout.
 import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { parseArgs } from "node:util";
+import { parseCliArgs } from "./args.ts";
 import { renderViewsChart, svgToPng } from "./charts.ts";
 import { ApiError } from "./client.ts";
 import { collect, ResolveError, VERSION } from "./collect.ts";
-import { addMonths, FIRST_AVAILABLE_MONTH, lastCompleteMonth } from "./dates.ts";
-import { DEFAULT_WEIGHTS, WEIGHT_KEYS, type Weights } from "./metrics/ranking.ts";
 import { writeReport } from "./report.ts";
 import { resolveTopic } from "./resolve.ts";
-import { buildAnswerChecklist, buildCaveats, buildFindings, LABELS, renderCaveat, type Caveat, type UiLang } from "./text.ts";
+import { buildAnswerChecklist, buildCaveats, buildFindings, LABELS, renderCaveat, type Caveat } from "./text.ts";
 
 const SKILL_ROOT = resolve(import.meta.dirname, "../..");
-const LANG_RE = /^[a-z]{2,3}(-[a-z]+)*$/;
-const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
-const WEIGHTS_HINT = `Use --weights key=number[,key=number...] with keys ${WEIGHT_KEYS.join(", ")} (non-negative numbers; missing keys default to ${WEIGHT_KEYS.map((k) => `${k}=${DEFAULT_WEIGHTS[k]}`).join(",")}).`;
 
 const HELP = `wiki-trends ${VERSION}
   resolve  --topic T [--topic T2] --langs pl,cs [--from-lang en]
@@ -40,76 +35,22 @@ function syntheticMode(): boolean {
 
 /** Runs one command in-process. The entry point below only prints the result and sets the exit code. */
 export async function runCli(argv: string[]): Promise<CliResult> {
-  let parsed;
-  try {
-    parsed = parseArgs({
-      args: argv,
-      allowPositionals: true,
-      allowNegative: true,
-      options: {
-        topic: { type: "string", multiple: true },
-        article: { type: "string", multiple: true },
-        langs: { type: "string" },
-        "from-lang": { type: "string" },
-        years: { type: "string" },
-        months: { type: "string" },
-        from: { type: "string" },
-        to: { type: "string" },
-        report: { type: "boolean", default: false },
-        "report-lang": { type: "string" },
-        title: { type: "string" },
-        notes: { type: "string" },
-        out: { type: "string" },
-        "out-dir": { type: "string" },
-        redirects: { type: "boolean", default: true },
-        weights: { type: "string" },
-        help: { type: "boolean", short: "h" },
-      },
-    });
-  } catch (e) {
-    return fail(2, (e as Error).message, "Run with --help for usage.");
-  }
-  const { values: v, positionals } = parsed;
-  const cmd = positionals[0];
-  if (!cmd || v.help || cmd === "help") return { code: 0, output: { ok: true, help: HELP } };
-
-  const topics = v.topic ?? [];
-  const langs = (v.langs ?? "").split(/[,\s]+/).map((x) => x.trim().toLowerCase()).filter(Boolean);
-  const fromLang = v["from-lang"] ?? "en";
-  const articles: Record<string, string[]> = {};
-  for (const a of v.article ?? []) {
-    const i = a.indexOf("=");
-    if (i < 1) return fail(2, `--article must look like lang=Title, got "${a}"`);
-    (articles[a.slice(0, i).trim().toLowerCase()] ??= []).push(a.slice(i + 1).trim());
-  }
-  if (!topics.length && !Object.keys(articles).length) return fail(2, "--topic is required");
-  if (!langs.length) return fail(2, "--langs is required, e.g. --langs pl,cs");
-  const badLang = [...langs, fromLang].find((l) => !LANG_RE.test(l));
-  if (badLang) return fail(2, `Invalid language code "${badLang}"`, "Use Wikipedia codes like uk, pl, cs (Ukrainian is 'uk', not 'ua').");
-  const weights = parseWeights(v.weights);
-  if (typeof weights === "string") return fail(2, weights, WEIGHTS_HINT);
+  const parsed = parseCliArgs(argv, new Date());
+  if (!parsed.ok) return fail(2, parsed.error, parsed.hint);
+  const a = parsed.args;
+  if (a.help) return { code: 0, output: { ok: true, help: HELP } };
+  const { cmd, topics, articles, langs, fromLang, weights, redirects } = a;
 
   try {
     if (cmd === "resolve") {
       const resolution = await Promise.all(topics.map((t) => resolveTopic(t, fromLang, langs)));
       return { code: 0, output: { ok: true, resolution } };
     }
-    if (cmd !== "analyze") return fail(2, `Unknown command "${cmd}"`, "Commands: resolve, analyze");
+    if (cmd !== "analyze" || !a.period) return fail(2, `Unknown command "${cmd}"`, "Commands: resolve, analyze");
 
-    // Period: complete months only
-    const to = v.to ?? lastCompleteMonth(new Date());
-    let from = v.from;
-    if (!from) {
-      const span = v.months ? Number(v.months) : Number(v.years ?? 3) * 12;
-      if (!Number.isInteger(span) || span < 6) return fail(2, "--years/--months must give at least 6 months");
-      from = addMonths(to, -(span - 1));
-    }
-    if (!MONTH_RE.test(from) || !MONTH_RE.test(to) || from > to) return fail(2, "--from/--to must be YYYY-MM and from <= to");
-    if (from < FIRST_AVAILABLE_MONTH) from = FIRST_AVAILABLE_MONTH;
-
-    const redirects = v.redirects;
+    const { from, to } = a.period;
     const data = await collect({ topics, langs, fromLang, articles, from, to, redirects, weights });
-    const uiLang: UiLang = v["report-lang"] === "uk" ? "uk" : "en";
+    const uiLang = a.reportLang;
     const query = { topics, articles, langs, fromLang, from, to, redirects, weights };
     const result = { query, ...data };
     // synthetic data must never pass for real numbers: first caveat, in the JSON and in the PDF
@@ -117,7 +58,7 @@ export async function runCli(argv: string[]): Promise<CliResult> {
 
     // Output files: data.json (incl. monthly series and caveat codes), chart.svg + chart.png, optional report PDF
     const stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
-    const outDir = v["out-dir"] ? join(resolve(process.cwd(), v["out-dir"]), `wiki-trends-${stamp}`) : join(SKILL_ROOT, "output", stamp);
+    const outDir = a.outDir ? join(resolve(process.cwd(), a.outDir), `wiki-trends-${stamp}`) : join(SKILL_ROOT, "output", stamp);
     mkdirSync(outDir, { recursive: true });
     writeFileSync(join(outDir, "data.json"), JSON.stringify({ version: VERSION, query, ...data, caveats }, null, 1));
     const chartSvg = await renderViewsChart(data.perLanguage, langs, LABELS[uiLang].yTitle);
@@ -129,14 +70,14 @@ export async function runCli(argv: string[]): Promise<CliResult> {
     }
 
     let reportPath: string | null = null;
-    if (v.report) {
+    if (a.report) {
       reportPath = await writeReport({
-        out: v.out ? resolve(process.cwd(), v.out) : join(outDir, `report-${uiLang}.pdf`),
+        out: a.out ? resolve(process.cwd(), a.out) : join(outDir, `report-${uiLang}.pdf`),
         lang: uiLang,
         result,
         caveats,
-        ...(v.title ? { title: v.title } : {}),
-        ...(v.notes ? { notes: v.notes } : {}),
+        ...(a.title ? { title: a.title } : {}),
+        ...(a.notes ? { notes: a.notes } : {}),
       });
     }
 
@@ -173,21 +114,6 @@ export async function runCli(argv: string[]): Promise<CliResult> {
     }
     return fail(1, (e as Error).message);
   }
-}
-
-/** "growth=2,share=1" → full weights (missing keys from DEFAULT_WEIGHTS), or an error message. */
-function parseWeights(spec: string | undefined): Weights | string {
-  const w: Weights = { ...DEFAULT_WEIGHTS };
-  for (const part of (spec ?? "").split(",").map((x) => x.trim()).filter(Boolean)) {
-    const i = part.indexOf("=");
-    const key = (i < 0 ? part : part.slice(0, i)).trim();
-    const raw = i < 0 ? "" : part.slice(i + 1).trim();
-    if (!(WEIGHT_KEYS as string[]).includes(key)) return `Unknown weight "${key}" in --weights`;
-    const x = raw === "" ? NaN : Number(raw);
-    if (!Number.isFinite(x) || x < 0) return `Weight ${key} must be a non-negative number, got "${raw}"`;
-    w[key as keyof Weights] = x;
-  }
-  return w;
 }
 
 function fail(code: number, error: string, hint?: string): CliResult {

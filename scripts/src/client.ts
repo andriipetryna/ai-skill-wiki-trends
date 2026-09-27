@@ -29,7 +29,8 @@ export function siteFor(lang: string): string {
   return `${lang.replace(/-/g, "_")}wiki`;
 }
 
-function encodeTitle(title: string): string {
+/** Title as a Pageviews REST path segment: spaces → underscores, then URI-encoded ('AC/DC' → 'AC%2FDC'). */
+export function encodeTitle(title: string): string {
   return encodeURIComponent(title.replace(/ /g, "_"));
 }
 
