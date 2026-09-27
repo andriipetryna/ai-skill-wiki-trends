@@ -27,7 +27,7 @@ wiki-trends/
 │   ├── unit/             # pure functions
 │   ├── integration/      # the CLI in-process against the fake API
 │   └── live/             # smoke tests against the real APIs (WT_LIVE=1)
-├── evals/                # task evals: the agent itself on fixed scenarios, graded automatically (see evals/README.md)
+├── evals/                # task + triggering evals: the agent itself, graded automatically (see evals/README.md)
 └── scripts/
     ├── wt                # entry point (bash): checks Node, installs dependencies
     └── src/
@@ -91,6 +91,13 @@ npm run eval                                        # all scenarios × 3 runs
 node evals/run.ts --only astronomy-trust --runs 1   # one scenario
 ```
 
+**Triggering evals** (spec 14) check that the agent picks the skill from its `description` alone, at the right time. They run labelled prompts (`evals/trigger-prompts.json`) of two kinds: prompts that should use the skill, and near misses that should not. The runner reports recall and precision per split. Run them on every change to the `description`:
+
+```bash
+npm run eval:trigger                                # all prompts × 3 runs
+node evals/trigger.ts --description "…" --split dev # try a candidate description without editing SKILL.md
+```
+
 See `evals/README.md` for flags, graders and recorded results.
 
 Run `npm run test:live` before a release and after touching `client.ts` or `resolve.ts`. It checks stable facts only (QIDs, titles, statuses, a one-page PDF), never view counts. `WT_CONTACT=you@example.com node tests/live/record-fixtures.ts` re-records one real response per API route into `tests/fake/recorded/`; `tests/unit/fake-shapes.test.ts` then checks that the fake API still answers in the same shapes, and fails until `tests/fake/fetch.ts` is updated when Wikimedia changes a format.
@@ -111,4 +118,3 @@ The numbers are made up. Every result in this mode carries the first caveat `SYN
 ## Deliberately out of scope for the MVP (next steps)
 
 1. **Caching.** Past months never change, so they can be cached forever; this will speed up follow-up queries.
-2. **Triggering evals** (spec 14 in `.specs/`): does the agent pick the skill from its `description` at the right time. Unit, integration, live and task evals are in place (see Testing).

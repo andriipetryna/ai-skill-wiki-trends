@@ -3,22 +3,16 @@
 //
 //   node evals/run.ts [--model haiku] [--runs 3] [--only id,id] [--split dev|holdout|all] [--judge [--judge-model sonnet]]
 //                     [--baseline] [--live] [--concurrency 3] [--timeout 600] [--regrade evals/results/<stamp>]
-import { spawn, spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { countWtCalls, gradeDeterministic, type Check, type Expect, type RunRecord } from "./graders/deterministic.ts";
 import { judge, type JudgeItem } from "./graders/judge.ts";
 import { checkNumbers, collectAllowed, type NumbersResult } from "./graders/numbers.ts";
 import { answerText, bashCommands, parseStream, sentFiles, wtCalls, wtOutputs, type Turn } from "./transcript.ts";
+import { AGENT_TOOLS, CLAUDE, claudeAvailable, createWorkspace, gitCommit, ISOLATION_ARGS, pool, removeWorkspace, REPO, RESULTS, round, runClaude, stampOf } from "./workspace.ts";
 
-const REPO = resolve(import.meta.dirname, "..");
-const RESULTS = join(REPO, "evals", "results");
 const JUDGE_CACHE = join(REPO, "evals", ".cache", "judge");
-const AGENT_TOOLS = "Bash Read Glob Grep Skill";
-const CLAUDE = process.env.CLAUDE_BIN || "claude";
-const SKILL_NAME = /^name:\s*(\S+)/m.exec(readFileSync(join(REPO, "SKILL.md"), "utf8"))?.[1] ?? "wiki-trends";
 
 type Split = "dev" | "holdout";
 type Variant = "skill" | "baseline";
@@ -128,40 +122,12 @@ const runDirName = (variant: Variant, run: number) => (variant === "skill" ? `ru
 
 // ---- running the agent
 
-function runClaude(args: string[], cwd: string, env: NodeJS.ProcessEnv, timeoutMs: number): Promise<{ stdout: string; stderr: string; timedOut: boolean }> {
-  return new Promise((done) => {
-    // stdin must be closed, otherwise `claude -p` waits for it
-    const child = spawn(CLAUDE, args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    child.stdout.on("data", (d: Buffer) => (stdout += d.toString("utf8")));
-    child.stderr.on("data", (d: Buffer) => (stderr += d.toString("utf8")));
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGKILL");
-    }, timeoutMs);
-    child.on("error", (e) => (stderr += `\nspawn error: ${e.message}`));
-    child.on("close", () => {
-      clearTimeout(timer);
-      done({ stdout, stderr, timedOut });
-    });
-  });
-}
-
 /** One scenario × variant × run: a fresh workspace outside the repo, one `claude -p` per user turn, outputs copied. */
 async function runOne(s: Scenario, variant: Variant, run: number, opts: Options, resultsDir: string): Promise<string> {
   const runDir = join(resultsDir, s.id, runDirName(variant, run));
   mkdirSync(runDir, { recursive: true });
-  // Never inside the repo: a symlink to the skill inside the skill loops for Glob/Grep
-  const ws = realpathSync(mkdtempSync(join(tmpdir(), "wt-eval-")));
-  const outDir = join(ws, "out");
-  mkdirSync(outDir);
-  const link = join(ws, ".claude", "skills", SKILL_NAME);
-  if (variant === "skill") {
-    mkdirSync(dirname(link), { recursive: true });
-    symlinkSync(REPO, link, "dir");
-  }
+  const ws = createWorkspace({ skill: variant === "skill" });
+  const { outDir } = ws;
   const env: NodeJS.ProcessEnv = { ...process.env, WT_OUT_DIR: outDir };
   if (opts.live) delete env.WT_FAKE_API;
   else env.WT_FAKE_API = "1";
@@ -170,14 +136,12 @@ async function runOne(s: Scenario, variant: Variant, run: number, opts: Options,
   let sessionId: string | null = null;
   try {
     for (const [i, prompt] of prompts.entries()) {
-      // user-level settings, hooks, skills and MCP servers stay out, so runs are comparable across machines
-      const args = ["-p", prompt, "--model", opts.model, "--output-format", "stream-json", "--verbose", "--allowedTools", AGENT_TOOLS];
-      args.push("--setting-sources", "project,local", "--strict-mcp-config");
+      const args = ["-p", prompt, "--model", opts.model, "--output-format", "stream-json", "--verbose", "--allowedTools", AGENT_TOOLS, ...ISOLATION_ARGS];
       if (i > 0) {
         if (!sessionId) break; // the first turn produced no session: the follow-up cannot run (graded as not completed)
         args.push("--resume", sessionId);
       } else if (prompts.length === 1) args.push("--no-session-persistence");
-      const res = await runClaude(args, ws, env, opts.timeoutMs);
+      const res = await runClaude(args, ws.dir, env, opts.timeoutMs);
       writeFileSync(join(runDir, `transcript-${i + 1}.jsonl`), res.stdout);
       const stderr = (res.timedOut ? `evals: killed after ${opts.timeoutMs / 1000} s\n` : "") + res.stderr;
       if (stderr.trim()) writeFileSync(join(runDir, `stderr-${i + 1}.txt`), stderr);
@@ -185,7 +149,7 @@ async function runOne(s: Scenario, variant: Variant, run: number, opts: Options,
     }
     copyOutputs(runDir, outDir);
   } finally {
-    cleanup(ws, link);
+    removeWorkspace(ws);
   }
   return runDir;
 }
@@ -201,16 +165,6 @@ function copyOutputs(runDir: string, outDir: string): void {
     const dir = dirname(data);
     if (!dir.startsWith(outDir) && existsSync(dir)) cpSync(dir, join(dest, basename(dir)), { recursive: true });
   }
-}
-
-function cleanup(ws: string, link: string): void {
-  // unlink the skill symlink first so nothing below can ever recurse into the repo
-  if (existsSync(link)) unlinkSync(link);
-  rmSync(ws, { recursive: true, force: true });
-  // follow-up scenarios need a persisted session; remove the project dir Claude Code created for this temp workspace
-  const projects = join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "projects");
-  const sessionDir = join(projects, ws.replace(/[^a-zA-Z0-9]/g, "-"));
-  if (basename(sessionDir).includes("wt-eval-") && existsSync(sessionDir)) rmSync(sessionDir, { recursive: true, force: true });
 }
 
 // ---- grading (also used by --regrade on stored results)
@@ -337,8 +291,6 @@ function aggregate(gs: Grades[]): Aggregate {
   };
 }
 
-const round = (x: number, d = 3) => Math.round(x * 10 ** d) / 10 ** d;
-
 function passRate(gs: Grades[]): { rate: number | null; pass: number; of: number } {
   const pass = gs.filter((g) => g.pass).length;
   return { rate: gs.length ? round(pass / gs.length) : null, pass, of: gs.length };
@@ -423,25 +375,6 @@ function printSummary(summary: ReturnType<typeof summarize>): void {
 
 // ---- main
 
-function gitCommit(): string {
-  const git = (...args: string[]) => spawnSync("git", args, { cwd: REPO, encoding: "utf8" }).stdout?.trim() ?? "";
-  const head = git("rev-parse", "--short", "HEAD") || "unknown";
-  return git("status", "--porcelain") ? `${head}+dirty` : head;
-}
-
-async function pool<T, R>(items: T[], n: number, f: (x: T, i: number) => Promise<R>): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      const i = next++;
-      out[i] = await f(items[i]!, i);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(n, items.length) }, worker));
-  return out;
-}
-
 async function main(): Promise<void> {
   const opts = parseOptions(process.argv.slice(2));
   const scenarios = loadScenarios(opts);
@@ -467,12 +400,11 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (spawnSync(CLAUDE, ["--version"], { encoding: "utf8" }).status !== 0) die(`"${CLAUDE}" not found: install Claude Code or set CLAUDE_BIN`);
+  if (!claudeAvailable()) die(`"${CLAUDE}" not found: install Claude Code or set CLAUDE_BIN`);
   if (opts.live && !process.env.WT_CONTACT) console.error("evals: --live without WT_CONTACT; the shared default contact may be rate-limited");
 
   const startedAt = new Date();
-  const stamp = startedAt.toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
-  const resultsDir = join(RESULTS, stamp);
+  const resultsDir = join(RESULTS, stampOf(startedAt));
   mkdirSync(resultsDir, { recursive: true });
   const meta: Meta = {
     startedAt: startedAt.toISOString(),

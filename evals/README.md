@@ -131,3 +131,87 @@ Each check is `true` or a failure message. A run passes when every check that ap
 - **Cost:** $1.57 for all 48 runs. With the skill: ≈ $0.03 and 24 s per single-turn scenario, ≈ $0.05 and 35–50 s with a follow-up.
 - **Grader fix after reading the transcripts:** english-report accepted only "низьк|low" for low confidence, but one correct answer said "ненадійна" (unreliable). The regex was widened and the runs regraded, which moved dev from 78% to 83%.
 - **What to fix next (in the CLI, per best practice 2):** the answer paraphrases the interest ≠ willingness-to-pay caveat until "pay" is lost, and Haiku sometimes replaces `ranking` with its own reasoning.
+
+## Triggering evals
+
+Before it reads `SKILL.md`, the agent sees only the skill's `name` and `description` and decides from those whether to use the skill. Triggering evals check that decision on labelled prompts, separately from answer quality, because a bad result is fixed in the `description`, not in the code. Spec: `.specs/14-trigger-evals.md`.
+
+```bash
+npm run eval:trigger                                  # = node evals/trigger.ts: all prompts × 3 runs on Haiku (~$1.70)
+node evals/trigger.ts --runs 1                        # one run per prompt (~$0.50)
+node evals/trigger.ts --split dev                     # while editing the description: never look at holdout
+node evals/trigger.ts --description "…" --split dev   # try a candidate description without editing SKILL.md
+node evals/trigger.ts --regrade evals/results/<stamp> # re-grade stored transcripts: free
+```
+
+| Flag | Default | |
+|---|---|---|
+| `--model` | `haiku` | the agent's model |
+| `--runs` | `3` | runs per prompt |
+| `--split` | `all` | `dev`, `holdout` or `all` |
+| `--only id,id` | all | prompt ids |
+| `--concurrency` | `4` | parallel agent runs |
+| `--timeout` | `180` | seconds per run |
+| `--description TEXT` | | the agent sees `TEXT` as the description: a shadow copy of the skill gets a new `SKILL.md`, and everything else in it is symlinked |
+| `--regrade DIR` | | recompute `triggered` and the summary from the transcripts stored in `DIR` |
+
+**One run** uses a workspace like the task evals (`evals/workspace.ts`: temp dir, skill in `.claude/skills/`, `WT_FAKE_API=1`) and runs `claude -p "<prompt>" --model <model> --output-format stream-json --verbose --max-turns 3 --allowedTools "Bash Read Glob Grep Skill" --setting-sources project,local --strict-mcp-config --no-session-persistence`. Three turns are enough to see the decision and keep the cost low, so `error_max_turns` results are normal here. Only a run that has no `result` event at all (a crash, a timeout, or an auth failure) counts as an error, and errors are left out of the metrics.
+
+**Triggered** (`evals/graders/trigger.ts`, tested in `tests/unit/eval-trigger.test.ts`) means the transcript contains at least one of:
+- a `Skill` tool use for this skill (a plugin prefix `x:wiki-trends` also counts);
+- a `Read` of its `SKILL.md`, or a Bash command that names it;
+- a Bash call to `scripts/wt`.
+
+Merely *mentioning* the skill does not count. For a Google Trends prompt, for example, the agent may offer Wikipedia pageviews as an alternative but must not run them silently.
+
+**Prompts** (`trigger-prompts.json`): `{ id, shouldTrigger, split, prompt }`. There are 14 positives and 12 negatives, in Ukrainian and English, with 4 of each in `holdout`. The positives cover:
+- a trend in one language;
+- a comparison between languages;
+- which language to localize into;
+- a one-page report;
+- indirect phrasing ("are people in Poland reading about keto more?");
+- prompts that name pageviews directly.
+
+The negatives are near misses:
+- knowledge questions;
+- editing, translating or summarising Wikipedia text;
+- Google Trends;
+- edition statistics;
+- a blog post;
+- the app's own download stats;
+- market research;
+- a Wikipedia dump script.
+
+**Report:** the console prints a table per prompt (triggered k/n and the signals), then the false negatives and false positives with their prompts. It ends with recall = triggered positives / positives and precision = triggered positives / all triggered, per split, over all runs.
+
+```
+evals/results/<stamp>/
+├── trigger-summary.json      # meta (incl. the description used), per split {tp, fp, fn, tn, recall, precision},
+│                             # falseNegatives, falsePositives, errors, per prompt, cost
+└── <prompt-id>/run-<n>/
+    ├── transcript.jsonl
+    ├── stderr.txt            # only if the CLI wrote to stderr
+    └── result.json           # { id, shouldTrigger, triggered, signals, error, … }
+```
+
+**Using the results:**
+- **False negative:** add the missing intent to the `description` in the user's words ("localize", "which language to launch", "interest in a topic"), not implementation words ("Wikimedia AQS").
+- **False positive:** add what the skill is *not* for ("not for general knowledge questions about the topic itself").
+- Keep the `description` under ~1,024 characters. After each edit, re-run both `dev` and `holdout`.
+- **Target:** recall ≥ 0.9 and precision ≥ 0.9 on `holdout` with Haiku.
+- Every prompt that triggered wrongly in manual use becomes a new labelled prompt.
+
+### Recorded results
+
+#### 2026-09-27 · v0.14.0 · Haiku 4.5 · 3 runs · description as committed (301 chars)
+
+| Split | Recall | Precision | tp | fp | fn | tn |
+|---|---|---|---|---|---|---|
+| dev | 1.00 | 1.00 | 30 | 0 | 0 | 24 |
+| holdout | 1.00 | 1.00 | 12 | 0 | 0 | 12 |
+
+- **Positive runs:** all 42 used the `Skill` tool and then ran `scripts/wt`, within 3 turns.
+- **Negative runs:** none triggered. On both Google Trends prompts the agent said it has no Google Trends access and *offered* Wikipedia pageviews as an alternative, without running them, which is the intended behaviour.
+- **Errors:** none. **Cost:** $1.66 for 78 runs (≈ $0.025 per positive run, ≈ $0.013 per negative run).
+- **Sanity check:** with `--description "Formats Markdown tables"`, recall on the 14 positives fell to 0.00 (0/14, 1 run, $0.33). The detection therefore depends on the description, not on something incidental in the workspace.
+- **No headroom:** the set does not yet separate good descriptions from better ones. Add harder near misses when the description changes: other Wikimedia tasks, "most-read article yesterday", and trends from non-Wikipedia sources phrased without naming the source.
