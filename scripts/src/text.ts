@@ -164,7 +164,7 @@ function orderedRows(r: AnalysisResult): AnalysisResult["perLanguage"] {
 // ---- 3. Caveats
 
 export type Caveat =
-  | { code: "interest_not_demand" | "share_normalisation" | "short_period" | "redirects_on" | "redirects_off" | "single_article" | "cross_language" | "bots" }
+  | { code: "synthetic" | "interest_not_demand" | "share_normalisation" | "short_period" | "redirects_on" | "redirects_off" | "single_article" | "cross_language" | "bots" }
   | { code: "period"; params: { from: Month; to: Month } }
   | { code: "search_resolved"; params: { input: string; label: string; qid: string; alternatives: string[] } }
   | { code: "missing_articles"; params: { topic: string; langs: string[] } }
@@ -197,6 +197,10 @@ export function buildCaveats(r: AnalysisResult): Caveat[] {
 export function renderCaveat(c: Caveat, lang: UiLang): string {
   const uk = lang === "uk";
   switch (c.code) {
+    case "synthetic":
+      return uk
+        ? "СИНТЕТИЧНІ ТЕСТОВІ ДАНІ (WT_FAKE_API=1). Це не реальні цифри Wikipedia; не використовувати для рішень."
+        : "SYNTHETIC TEST DATA (WT_FAKE_API=1). Not real Wikipedia numbers; do not use for decisions.";
     case "interest_not_demand":
       return uk
         ? "Перегляди вимірюють цікавість і увагу, а не готовність платити. Сприймайте результати як сигнал для подальшої перевірки."

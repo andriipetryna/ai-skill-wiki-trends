@@ -14,20 +14,26 @@ scripts/wt analyze --topic "Intermittent fasting" --langs pl,cs --years 2
 scripts/wt resolve --topic "Astronomy" --langs uk,pl
 scripts/wt --help
 
-npm run typecheck   # tsc --noEmit — the only check; there are no tests yet
-npm run wt -- ...   # same as scripts/wt but without the Node-version guard / auto-install
+npm run typecheck         # tsc --noEmit (also covers tests/, evals/, vitest.config.ts)
+npm test                  # typecheck + vitest unit + integration projects (offline); what CI runs
+npm run test:unit         # vitest --project unit
+npm run test:integration  # vitest --project integration
+npm run test:live         # WT_LIVE=1, real Wikimedia APIs; never in CI
+npx vitest run tests/unit/fake-noise.test.ts   # a single file
+npm run wt -- ...         # same as scripts/wt but without the Node-version guard / auto-install
+WT_FAKE_API=1 scripts/wt analyze ...           # real CLI on synthetic data, no network (see Testing)
 ```
 
 - **No build step.** TypeScript runs directly on Node >= 22.18 via native type stripping. `.ts` files import each other with explicit `.ts` extensions (`allowImportingTsExtensions`, `verbatimModuleSyntax`, `erasableSyntaxOnly` — so no enums/namespaces/param properties).
 - `WT_CONTACT` (email or URL) goes into the Wikimedia `User-Agent`; unset or empty → `skill@gmail.com` (`DEFAULT_CONTACT` in `client.ts`). Set your own to avoid being blocked (HTTP 403) or rate-limited along with everyone else using the default.
-- There are no tests, no linter, and no caching — deliberately deferred (see README "next steps").
+- There is no linter and no caching — deliberately deferred (see README "next steps").
 
 ## Architecture
 
 Pipeline lives in `scripts/src/`, entry point `cli.ts`. Data flows one direction:
 
 ```
-cli.ts        parse args, own the period window, write output files, format the stdout JSON
+cli.ts        runCli(argv) → { code, output }: parse args, own the period window, write output files, format the stdout JSON
   └─ resolve.ts   topic (title or Qxxx) → Wikidata QID → article title per language
   └─ collect.ts   articles (+ their redirects) + edition traffic → monthly views → 12-month period totals + metrics
        └─ client.ts   all HTTP: Pageviews REST (per-article, aggregate), MediaWiki Action API (incl. redirects), Wikidata; retry, no cache
@@ -56,6 +62,18 @@ Key invariants — respect these when editing:
 - **`--article lang="Title"`** overrides the Wikidata-resolved article for that language (used after a user picks a `suggestion`).
 - Failure modes are typed: `ResolveError` (ambiguous / not-found topic → exit 2, returns `candidates`) and `ApiError` (network/HTTP → exit 1). `cli.ts` maps them to `{ok:false, error, hint}`.
 - Language handling: Wikipedia code → Wikidata sitelink key via `siteFor` (`uk` → `ukwiki`). Ukrainian is `uk`, not `ua`.
+
+## Testing
+
+Specs 09–14 in `.specs/`. Layers (vitest projects in `vitest.config.ts`):
+- **unit** (`tests/unit/`): pure functions; series from `gen()` / `genSeries()` in `tests/fake/noise.ts`, never long hand-typed arrays.
+- **integration** (`tests/integration/`, 30 s timeout): `runCli([...args, "--out-dir", tmp])` in-process with `vi.stubGlobal("fetch", createFakeFetch(demoWorld()))`, `vi.setSystemTime(...)` for the clock (the CLI reads `new Date()`) and `CLIENT_CONFIG.retryBaseMs = 0` so retries do not sleep.
+- **live** (`tests/live/`, 120 s): real APIs, only collected when `WT_LIVE=1`.
+- **evals** (`evals/`, `npm run eval`): the agent end to end on the synthetic world; not in CI.
+
+Fake Wikimedia API (`tests/fake/`): `noise.ts` (deterministic `noise`/`gen`/`genSeries`, and `gens.growth(base, %/yr, {season, peak, noise, seed, spikes})` anchored at 2024-07), `world.ts` (`FakeWorld` + `demoWorld()`; ground truth in the comment above it — change the data and that comment together), `fetch.ts` (`createFakeFetch(world, { failFirst?, failStatus? })`, routes by URL, records `.calls` and `.unknown`; unknown routes get `404 { error: "unknown fake route" }`). Responses must match the real shapes (route table in spec 09): e.g. months with 0 views are omitted, search `pages` are not sorted by `index`. `tests/fake/` must not import dev dependencies: the CLI loads it at runtime.
+
+`WT_FAKE_API=1`: the entry point in `cli.ts` dynamically imports `tests/fake/` and replaces `globalThis.fetch` before `runCli`; `runCli` then prepends the `synthetic` caveat (JSON and PDF). Documented in README only, not in SKILL.md.
 
 ## Output
 

@@ -2,7 +2,7 @@
 
 A skill in the [Agent Skills](https://agentskills.io/specification) format for an AI agent. For a given topic it finds the matching articles across several Wikipedia language editions, pulls monthly pageviews from the Wikimedia Pageviews API, shows the change between periods, draws a chart and produces a one-page PDF report.
 
-This is a minimum viable version: no trend metrics, no caching and no tests. These are deliberately deferred to later iterations.
+This is a minimum viable version: there is no caching yet (see next steps).
 
 ## Running
 
@@ -21,7 +21,12 @@ wiki-trends/
 ├── SKILL.md              # instructions for the agent
 ├── references/
 │   └── methodology.md    # formulas and thresholds; the agent reads it only when asked
-├── package.json / package-lock.json / tsconfig.json / .nvmrc
+├── package.json / package-lock.json / tsconfig.json / .nvmrc / vitest.config.ts
+├── tests/
+│   ├── fake/             # fake Wikimedia API: noise.ts (series generators), world.ts (synthetic data), fetch.ts (router)
+│   ├── unit/             # pure functions
+│   ├── integration/      # the CLI in-process against the fake API
+│   └── live/             # smoke tests against the real APIs (WT_LIVE=1)
 └── scripts/
     ├── wt                # entry point (bash): checks Node, installs dependencies
     └── src/
@@ -69,10 +74,30 @@ For the agent, `analyze` also returns three fields generated for the exact resul
 
 Verified against real API responses: for "Intermittent fasting" (Q1666254) Wikidata has no Polish article; the closest is the broader "Głodówka lecznicza". So the first example from the task requires a decision from the user.
 
+## Testing
+
+```bash
+npm test                  # typecheck + unit + integration (offline, against the fake API); what CI runs
+npm run test:unit
+npm run test:integration
+npm run test:live         # real Wikimedia APIs (WT_LIVE=1); set WT_CONTACT
+```
+
+Integration tests run the whole pipeline in-process (`runCli` from `scripts/src/cli.ts`) against a fake Wikimedia API: `createFakeFetch(demoWorld())` from `tests/fake/` is installed with `vi.stubGlobal("fetch", …)`. It answers in the exact shapes of the real APIs, and every series in it is generated, so the right answers are known (they are written next to the data in `tests/fake/world.ts`).
+
+**Synthetic mode.** `WT_FAKE_API=1 scripts/wt analyze …` runs the real CLI on the same fake world, with no network. It exists for evals and demos:
+
+```bash
+WT_FAKE_API=1 scripts/wt analyze --topic "Intermittent fasting" --langs pl,cs --years 2   # pl: no_article + suggestions
+WT_FAKE_API=1 scripts/wt analyze --topic "Mercury" --langs uk                            # ambiguous topic, exit 2
+```
+
+The numbers are made up. Every result in this mode carries the first caveat `SYNTHETIC TEST DATA (WT_FAKE_API=1). Not real Wikipedia numbers; do not use for decisions.`, in the JSON and in the PDF. The fake world covers: Intermittent fasting (Q1666254; en, cs with a spike, pl only via search), Astronomy (Q333; uk, pl), English language (Q1860) + English as a second or foreign language (Q1321) in pl, cs, uk, de, hu, ro, and the ambiguous "Mercury". Any other topic or language is not found.
+
 ## Deliberately out of scope for the MVP (next steps)
 
 1. **Caching.** Past months never change, so they can be cached forever; this will speed up follow-up queries.
-2. **Tests and evals:**
+2. **Tests and evals** (the infrastructure is in place, see Testing; specs 10–14 in `.specs/`):
    - unit tests on synthetic data with a known answer;
-   - e2e tests against a fake API;
+   - e2e tests against the fake API;
    - agent runs on a cheap model, checking that every number in the answer is present in the JSON.

@@ -9,7 +9,7 @@ import { addMonths, FIRST_AVAILABLE_MONTH, lastCompleteMonth } from "./dates.ts"
 import { DEFAULT_WEIGHTS, WEIGHT_KEYS, type Weights } from "./metrics/ranking.ts";
 import { writeReport } from "./report.ts";
 import { resolveTopic } from "./resolve.ts";
-import { buildAnswerChecklist, buildCaveats, buildFindings, LABELS, renderCaveat, type UiLang } from "./text.ts";
+import { buildAnswerChecklist, buildCaveats, buildFindings, LABELS, renderCaveat, type Caveat, type UiLang } from "./text.ts";
 
 const SKILL_ROOT = resolve(import.meta.dirname, "../..");
 const LANG_RE = /^[a-z]{2,3}(-[a-z]+)*$/;
@@ -28,7 +28,18 @@ Topic = English Wikipedia title (or title in --from-lang) or a Wikidata QID.\n--
 
 type Output = Record<string, unknown>;
 
-async function main(argv: string[]): Promise<{ code: number; output: Output }> {
+export interface CliResult {
+  code: number;
+  output: Output;
+}
+
+/** WT_FAKE_API=1: every request is answered from the synthetic world in tests/fake/ (evals, demos). */
+function syntheticMode(): boolean {
+  return process.env.WT_FAKE_API === "1";
+}
+
+/** Runs one command in-process. The entry point below only prints the result and sets the exit code. */
+export async function runCli(argv: string[]): Promise<CliResult> {
   let parsed;
   try {
     parsed = parseArgs({
@@ -101,7 +112,8 @@ async function main(argv: string[]): Promise<{ code: number; output: Output }> {
     const uiLang: UiLang = v["report-lang"] === "uk" ? "uk" : "en";
     const query = { topics, articles, langs, fromLang, from, to, redirects, weights };
     const result = { query, ...data };
-    const caveats = buildCaveats(result);
+    // synthetic data must never pass for real numbers: first caveat, in the JSON and in the PDF
+    const caveats: Caveat[] = [...(syntheticMode() ? [{ code: "synthetic" } as const] : []), ...buildCaveats(result)];
 
     // Output files: data.json (incl. monthly series and caveat codes), chart.svg + chart.png, optional report PDF
     const stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
@@ -178,7 +190,7 @@ function parseWeights(spec: string | undefined): Weights | string {
   return w;
 }
 
-function fail(code: number, error: string, hint?: string): { code: number; output: Output } {
+function fail(code: number, error: string, hint?: string): CliResult {
   return { code, output: { ok: false, error, ...(hint ? { hint } : {}) } };
 }
 
@@ -191,8 +203,26 @@ function isMain(): boolean {
   }
 }
 
+/** Swaps the global fetch for the fake Wikimedia API. Loaded lazily: tests/fake/ is not needed otherwise. */
+async function installFakeApi(): Promise<void> {
+  const [{ createFakeFetch }, { demoWorld }] = await Promise.all([import("../../tests/fake/fetch.ts"), import("../../tests/fake/world.ts")]);
+  globalThis.fetch = createFakeFetch(demoWorld());
+  process.stderr.write("wiki-trends: WT_FAKE_API=1, serving synthetic data (not real Wikipedia numbers)\n");
+}
+
+async function entry(argv: string[]): Promise<CliResult> {
+  if (syntheticMode()) {
+    try {
+      await installFakeApi();
+    } catch (e) {
+      return fail(1, `WT_FAKE_API=1, but the fake API could not be loaded: ${(e as Error).message}`, "Unset WT_FAKE_API to use the real Wikimedia APIs.");
+    }
+  }
+  return runCli(argv);
+}
+
 if (isMain()) {
-  const res = await main(process.argv.slice(2));
+  const res = await entry(process.argv.slice(2));
   process.stdout.write(JSON.stringify(res.output) + "\n");
   process.exitCode = res.code;
 }

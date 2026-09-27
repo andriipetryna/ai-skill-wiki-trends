@@ -14,6 +14,9 @@ const REST = "https://wikimedia.org/api/rest_v1/metrics/pageviews";
 /** used when WT_CONTACT is unset or empty */
 const DEFAULT_CONTACT = "skill@gmail.com";
 
+/** Retry policy, read at call time: tests set retryBaseMs = 0 so retries do not sleep. */
+export const CLIENT_CONFIG = { retryBaseMs: 500, maxRetries: 3 };
+
 /** Wikimedia requires a descriptive User-Agent with contact info. */
 function userAgent(): string {
   const contact = process.env.WT_CONTACT || DEFAULT_CONTACT;
@@ -48,10 +51,10 @@ async function getJson<T>(url: string): Promise<T | null> {
       }
     } catch (err) {
       if (err instanceof ApiError) throw err;
-      if (attempt >= 3) throw new ApiError(`Network error for ${url}: ${(err as Error).message}`, 0, url);
+      if (attempt >= CLIENT_CONFIG.maxRetries) throw new ApiError(`Network error for ${url}: ${(err as Error).message}`, 0, url);
     }
-    if (attempt >= 3) throw new ApiError(`HTTP ${status} after ${attempt + 1} attempts for ${url}`, status, url);
-    await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
+    if (attempt >= CLIENT_CONFIG.maxRetries) throw new ApiError(`HTTP ${status} after ${attempt + 1} attempts for ${url}`, status, url);
+    await new Promise((r) => setTimeout(r, CLIENT_CONFIG.retryBaseMs * 2 ** attempt));
   }
 }
 
