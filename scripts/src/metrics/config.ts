@@ -18,4 +18,10 @@ export const CONFIG = {
     /** how many spikes (by ratio) are listed in the output */
     maxListed: 5,
   },
+  trend: {
+    /** below this: plain Theil–Sen + plain Mann–Kendall (no seasonal pairs to compare) */
+    seasonalMinMonths: 24,
+    /** months per seasonal cycle */
+    period: 12,
+  },
 } as const;

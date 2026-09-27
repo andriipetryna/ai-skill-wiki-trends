@@ -3,7 +3,7 @@ name: wiki-trends
 description: Fetch and compare Wikipedia pageviews for a topic across language editions (Wikimedia Pageviews API), with a chart and a one-page PDF report. Use when a user asks whether interest in a topic is growing, compares interest between languages, or wants a shareable report on topic interest from Wikipedia.
 compatibility: Requires Node.js >= 22.18 and network access to wikimedia.org, wikipedia.org, wikidata.org and the npm registry (first run only).
 metadata:
-  version: "0.8.0"
+  version: "0.9.0"
 ---
 
 # Wikipedia interest trends (MVP)
@@ -34,6 +34,7 @@ The first run installs dependencies automatically (`npm ci`, ~30 s). The command
 4. **If `ok` is true, answer from the JSON.**
    - `metrics.yoy.sharePct` = change of the topic's share of edition traffic, last 12 months vs the previous 12, with one-off spikes excluded. `viewsPct` (raw views, spikes excluded) and `editionPct` (whole edition) explain differences: if the edition shrinks, raw views can fall while interest (share) grows.
    - If `metrics.spikes` is non-empty, name the months: these are one-off events (news etc.) and are excluded from YoY and trend. `xBaseline` is how many times above the usual level that month was. If `yoy.sharePctWithSpikes` differs a lot from `yoy.sharePct`, say that the apparent change was driven by spikes. The chart marks spike months with rings.
+   - `metrics.trend.sharePctPerYear` is the robust growth rate of the topic's share per year over the whole period (spikes excluded); `pValue` < 0.05 means the trend is unlikely to be noise. Quote p < 0.001 as "p<0.001". `viewsPctPerYear` and `editionPctPerYear` give the same context as in YoY. YoY compares only the last two years; the trend uses every month, so when they disagree, say both. `test: "mann_kendall"` means the range is under 2 years, so seasonality is not controlled. `trend` is null only when there are fewer than 2 months.
    - If `yoy.method` is `second_half_vs_first_half`, say the period is shorter than 2 years, so seasonality is not controlled.
    - `metrics.yoy` is null when there is nothing to compare with (e.g. the article is new and the previous period has no views): say so, don't guess a change.
    - `avgMonthlyViews`, `totalViews` and `periods` (12-month totals) show volume.
@@ -56,7 +57,7 @@ The first run installs dependencies automatically (`npm ci`, ~30 s). The command
 - Every number you state must appear in the JSON. Copy it; never compute new numbers or ratios.
 - **Do not compare raw view counts between languages** ("Polish readers view it 2× more"): editions differ hugely in size. Compare `metrics.yoy.sharePct` (direction of change) instead.
 - For comparing languages use `metrics.sharePerMillion.last12Avg` (views per million pageviews of that edition, NOT per million people). Never compare raw views between languages.
-- This version has no significance test. For a trust question, say that the tool shows the direction and size of change only; small volumes (e.g. under ~1000 views/month) and small changes (a few %) may be noise.
+- For a trust question, use `metrics.trend.pValue`: p < 0.05 → the trend is unlikely to be noise; p ≥ 0.05 → it may be noise, whatever the size of the change.
 - Always mention that pageviews show interest, not willingness to pay, plus one more item from `caveats`.
 - Keep it short: a direct answer first, then the chart, then per language, then caveats, then file links.
 

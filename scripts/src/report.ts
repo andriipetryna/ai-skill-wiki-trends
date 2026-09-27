@@ -20,7 +20,7 @@ export const LABELS = {
     chart: "Monthly share of the edition's traffic",
     notes: "Interpretation (written by the AI agent)",
     caveats: "Limitations",
-    cols: ["Lang", "Article", "Total views", "Avg / month", "Per million", "Last 12 mo", "YoY share"],
+    cols: ["Lang", "Article", "Avg / month", "Per million", "YoY share", "Trend/yr", "p"],
     meta: (langs: string, from: string, to: string, date: string) => `Wikipedia pageviews · ${langs} · ${from} – ${to} · generated ${date}`,
     defaultTitle: (t: string) => `Interest in “${t}” on Wikipedia`,
     noArticle: "no article",
@@ -33,6 +33,7 @@ export const LABELS = {
       "Raw views are not comparable across languages: editions differ greatly in size.",
       "Share = article views per million pageviews of the whole language edition (not per million people).",
       "A single article is a proxy for the topic.",
+      "Trend/yr = robust growth of the share per year over the whole range (seasonal Sen slope); p < 0.05 means it is unlikely to be noise (seasonal Mann–Kendall).",
     ],
     redirectsCaveat: (on: boolean) =>
       on
@@ -44,7 +45,7 @@ export const LABELS = {
     chart: "Частка в трафіку розділу за місяць",
     notes: "Інтерпретація (написав AI-агент)",
     caveats: "Обмеження",
-    cols: ["Мова", "Стаття", "Усього", "Сер. / міс", "На мільйон", "Ост. 12 міс", "Рік-до-року"],
+    cols: ["Мова", "Стаття", "Сер. / міс", "На мільйон", "Рік-до-року", "Тренд/рік", "p"],
     meta: (langs: string, from: string, to: string, date: string) => `Перегляди Wikipedia · ${langs} · ${from} – ${to} · створено ${date}`,
     defaultTitle: (t: string) => `Інтерес до «${t}» у Wikipedia`,
     noArticle: "немає статті",
@@ -57,6 +58,7 @@ export const LABELS = {
       "Сирі перегляди не порівнюються між мовами: розділи дуже різні за розміром.",
       "Частка = переглядів статті на мільйон усіх переглядів мовного розділу (не на мільйон людей).",
       "Одна стаття — лише проксі теми.",
+      "Тренд/рік = стійкий річний приріст частки за весь період (сезонний нахил Сена); p < 0,05 означає, що це навряд чи шум (сезонний тест Манна–Кендалла).",
     ],
     redirectsCaveat: (on: boolean) =>
       on
@@ -102,7 +104,7 @@ export async function writeReport(r: ReportInput): Promise<string> {
 
   // Table
   y = heading(doc, t.table, X, y);
-  const widths = [36, 127, 72, 72, 72, 72, 72]; // sums to W = 523
+  const widths = [36, 175, 68, 68, 68, 68, 40]; // sums to W = 523
   const aligns = ["left", "left", "right", "right", "right", "right", "right"] as const;
   doc.font("B").fontSize(7.8).fillColor(INK_2);
   let cx = X;
@@ -114,19 +116,18 @@ export async function writeReport(r: ReportInput): Promise<string> {
   doc.moveTo(X, y).lineTo(X + W, y).lineWidth(0.6).strokeColor(RULE).stroke();
   y += 4;
   for (const row of r.perLanguage.slice(0, 12)) {
-    const last = row.periods.at(-1);
     const cells =
       row.status === "ok"
         ? [
             row.lang,
             row.articles.join(" + "),
-            fmt(row.totalViews),
             fmt(row.avgMonthlyViews),
             row.metrics ? row.metrics.sharePerMillion.last12Avg.toFixed(1) : "—",
-            last ? fmt(last.views) : "—",
             signed(row.metrics?.yoy?.sharePct ?? null),
+            signed(row.metrics?.trend?.sharePctPerYear ?? null),
+            pValue(row.metrics?.trend?.pValue ?? null),
           ]
-        : [row.lang, row.articles.join(" + ") || "—", "—", "—", "—", "—", row.status === "no_article" ? t.noArticle : t.noData];
+        : [row.lang, row.articles.join(" + ") || "—", "—", "—", row.status === "no_article" ? t.noArticle : t.noData, "—", "—"];
     cx = X;
     cells.forEach((c, i) => {
       doc.font(i === 0 ? "B" : "R").fontSize(8.5).fillColor(i === 0 ? PALETTE[r.langs.indexOf(row.lang) % PALETTE.length]! : INK);
@@ -204,6 +205,11 @@ function fmt(n: number): string {
 function signed(x: number | null): string {
   if (x === null) return "—";
   return x > 0 ? `+${x.toFixed(1)}%` : `${x.toFixed(1)}%`;
+}
+
+function pValue(p: number | null): string {
+  if (p === null) return "—";
+  return p < 0.001 ? "<0.001" : p.toFixed(3);
 }
 
 function fit(doc: PDFKit.PDFDocument, s: string, width: number): string {

@@ -34,7 +34,7 @@ export function monthRange(from: Month, to: Month): Month[] {
   return Array.from({ length: n + 1 }, (_, i) => addMonths(from, i));
 }
 
-/** Calendar month index 0..11 */
+/** Calendar month index 0..11 of a 'YYYY-MM' month. */
 export function monthOfYear(m: Month): number {
   return parseMonth(m).mo - 1;
 }

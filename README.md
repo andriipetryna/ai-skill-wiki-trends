@@ -51,6 +51,7 @@ What `analyze` returns for each language:
 - `periods` — totals for consecutive 12-month blocks ending at the last complete month;
 - `metrics.yoy` — year-over-year change: last 12 months vs the previous 12 (`method: "last12_vs_prev12"`; second half vs first half for ranges under 2 years). `sharePct` is on share per million with one-off spikes excluded (the headline number), `sharePctWithSpikes` on the share as is, `viewsPct` on raw views (spikes excluded) and `editionPct` on the whole edition, to explain why they can differ; `null` when there is nothing to compare with;
 - `metrics.spikes` — one-off upward spikes (news, a Google Doodle, unfiltered bots): up to 5 months, by how many times (`xBaseline`) they exceed the 7-month rolling median. They are replaced by that baseline for YoY and marked with rings on the chart;
+- `metrics.trend` — growth per year over the whole range: `sharePctPerYear` (share, spikes excluded; the headline), `viewsPctPerYear`, `editionPctPerYear`, from the seasonal Sen slope (median slope between the same calendar month in different years, so the yearly cycle is not mistaken for growth), plus `pValue` from the seasonal Mann–Kendall test (< 0.05: unlikely to be noise). Under 2 years the plain Theil–Sen / Mann–Kendall are used (`test: "mann_kendall"`);
 - `metrics.sharePerMillion` — views per million pageviews of the whole language edition (`median`, `last12Avg`); this is what makes languages comparable and removes edition-wide traffic shifts. The chart plots this share;
 - `status: "no_article"` + `suggestions` — Wikidata has no article in this language, so the CLI searches for candidates in the edition itself; the chosen article can be passed via `--article pl="…"`.
 
@@ -59,7 +60,6 @@ Verified against real API responses: for "Intermittent fasting" (Q1666254) Wikid
 ## Deliberately out of scope for the MVP (next steps)
 
 1. **Metrics:**
-   - seasonal trend and significance (seasonal Sen / Mann–Kendall);
    - confidence score with explanations;
    - ranking languages by user-defined weights.
 2. **Caching.** Past months never change, so they can be cached forever; this will speed up follow-up queries.
