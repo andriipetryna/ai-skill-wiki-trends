@@ -3,7 +3,7 @@ name: wiki-trends
 description: Fetch and compare Wikipedia pageviews for a topic across language editions (Wikimedia Pageviews API), with a chart and a one-page PDF report. Use when a user asks whether interest in a topic is growing, compares interest between languages, or wants a shareable report on topic interest from Wikipedia.
 compatibility: Requires Node.js >= 22.18 and network access to wikimedia.org, wikipedia.org, wikidata.org and the npm registry (first run only).
 metadata:
-  version: "0.9.0"
+  version: "0.10.0"
 ---
 
 # Wikipedia interest trends (MVP)
@@ -35,6 +35,8 @@ The first run installs dependencies automatically (`npm ci`, ~30 s). The command
    - `metrics.yoy.sharePct` = change of the topic's share of edition traffic, last 12 months vs the previous 12, with one-off spikes excluded. `viewsPct` (raw views, spikes excluded) and `editionPct` (whole edition) explain differences: if the edition shrinks, raw views can fall while interest (share) grows.
    - If `metrics.spikes` is non-empty, name the months: these are one-off events (news etc.) and are excluded from YoY and trend. `xBaseline` is how many times above the usual level that month was. If `yoy.sharePctWithSpikes` differs a lot from `yoy.sharePct`, say that the apparent change was driven by spikes. The chart marks spike months with rings.
    - `metrics.trend.sharePctPerYear` is the robust growth rate of the topic's share per year over the whole period (spikes excluded); `pValue` < 0.05 means the trend is unlikely to be noise. Quote p < 0.001 as "p<0.001". `viewsPctPerYear` and `editionPctPerYear` give the same context as in YoY. YoY compares only the last two years; the trend uses every month, so when they disagree, say both. `test: "mann_kendall"` means the range is under 2 years, so seasonality is not controlled. `trend` is null only when there are fewer than 2 months.
+   - `metrics.verdict` is the one-word answer for the trend (`growing` / `declining` / `flat` / `inconclusive`). Use the verdict words as they are; never upgrade `inconclusive` to "growing" (or "declining").
+   - `metrics.confidence` answers "can we trust this?": `level` (`high` / `medium` / `low`) and `reasons` (each starts with `+` or `-`). Explain the level with its reasons, e.g. "confidence is medium: a large part of the apparent change comes from one-off spikes". For `low`, say clearly that the data does not support a conclusion.
    - If `yoy.method` is `second_half_vs_first_half`, say the period is shorter than 2 years, so seasonality is not controlled.
    - `metrics.yoy` is null when there is nothing to compare with (e.g. the article is new and the previous period has no views): say so, don't guess a change.
    - `avgMonthlyViews`, `totalViews` and `periods` (12-month totals) show volume.
@@ -57,7 +59,8 @@ The first run installs dependencies automatically (`npm ci`, ~30 s). The command
 - Every number you state must appear in the JSON. Copy it; never compute new numbers or ratios.
 - **Do not compare raw view counts between languages** ("Polish readers view it 2× more"): editions differ hugely in size. Compare `metrics.yoy.sharePct` (direction of change) instead.
 - For comparing languages use `metrics.sharePerMillion.last12Avg` (views per million pageviews of that edition, NOT per million people). Never compare raw views between languages.
-- For a trust question, use `metrics.trend.pValue`: p < 0.05 → the trend is unlikely to be noise; p ≥ 0.05 → it may be noise, whatever the size of the change.
+- For a trust question, answer with `metrics.confidence.level` and its `reasons` (not the p-value alone). Name every language whose confidence is `low`.
+- State direction with `metrics.verdict` words; never call an `inconclusive` language growing or declining.
 - Always mention that pageviews show interest, not willingness to pay, plus one more item from `caveats`.
 - Keep it short: a direct answer first, then the chart, then per language, then caveats, then file links.
 

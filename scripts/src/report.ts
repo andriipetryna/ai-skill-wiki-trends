@@ -20,7 +20,9 @@ export const LABELS = {
     chart: "Monthly share of the edition's traffic",
     notes: "Interpretation (written by the AI agent)",
     caveats: "Limitations",
-    cols: ["Lang", "Article", "Avg / month", "Per million", "YoY share", "Trend/yr", "p"],
+    cols: ["Lang", "Article", "Avg / month", "Per million", "YoY share", "Trend/yr", "p", "Verdict", "Confidence"],
+    verdicts: { growing: "growing", declining: "declining", flat: "flat", inconclusive: "inconclusive" },
+    levels: { high: "high", medium: "medium", low: "low" },
     meta: (langs: string, from: string, to: string, date: string) => `Wikipedia pageviews · ${langs} · ${from} – ${to} · generated ${date}`,
     defaultTitle: (t: string) => `Interest in “${t}” on Wikipedia`,
     noArticle: "no article",
@@ -45,7 +47,9 @@ export const LABELS = {
     chart: "Частка в трафіку розділу за місяць",
     notes: "Інтерпретація (написав AI-агент)",
     caveats: "Обмеження",
-    cols: ["Мова", "Стаття", "Сер. / міс", "На мільйон", "Рік-до-року", "Тренд/рік", "p"],
+    cols: ["Мова", "Стаття", "Сер. / міс", "На мільйон", "Рік-до-року", "Тренд/рік", "p", "Висновок", "Довіра"],
+    verdicts: { growing: "зростає", declining: "спадає", flat: "стабільний", inconclusive: "неоднозначно" },
+    levels: { high: "висока", medium: "середня", low: "низька" },
     meta: (langs: string, from: string, to: string, date: string) => `Перегляди Wikipedia · ${langs} · ${from} – ${to} · створено ${date}`,
     defaultTitle: (t: string) => `Інтерес до «${t}» у Wikipedia`,
     noArticle: "немає статті",
@@ -104,8 +108,8 @@ export async function writeReport(r: ReportInput): Promise<string> {
 
   // Table
   y = heading(doc, t.table, X, y);
-  const widths = [36, 175, 68, 68, 68, 68, 40]; // sums to W = 523
-  const aligns = ["left", "left", "right", "right", "right", "right", "right"] as const;
+  const widths = [28, 116, 58, 55, 58, 50, 36, 68, 54]; // sums to W = 523; long titles are truncated by fit()
+  const aligns = ["left", "left", "right", "right", "right", "right", "right", "center", "center"] as const;
   doc.font("B").fontSize(7.8).fillColor(INK_2);
   let cx = X;
   t.cols.forEach((c, i) => {
@@ -126,8 +130,10 @@ export async function writeReport(r: ReportInput): Promise<string> {
             signed(row.metrics?.yoy?.sharePct ?? null),
             signed(row.metrics?.trend?.sharePctPerYear ?? null),
             pValue(row.metrics?.trend?.pValue ?? null),
+            row.metrics ? t.verdicts[row.metrics.verdict] : "—",
+            row.metrics ? t.levels[row.metrics.confidence.level] : "—",
           ]
-        : [row.lang, row.articles.join(" + ") || "—", "—", "—", row.status === "no_article" ? t.noArticle : t.noData, "—", "—"];
+        : [row.lang, row.articles.join(" + ") || "—", "—", "—", "—", "—", "—", row.status === "no_article" ? t.noArticle : t.noData, "—"];
     cx = X;
     cells.forEach((c, i) => {
       doc.font(i === 0 ? "B" : "R").fontSize(8.5).fillColor(i === 0 ? PALETTE[r.langs.indexOf(row.lang) % PALETTE.length]! : INK);

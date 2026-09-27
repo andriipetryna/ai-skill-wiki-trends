@@ -1,5 +1,6 @@
 // The single place where metrics are applied, in order. Full precision inside; rounding only here at the boundary.
 import { monthOfYear, type Month } from "../dates.ts";
+import { assessConfidence, verdictFor, type ConfidenceLevel, type Verdict } from "./confidence.ts";
 import { CONFIG } from "./config.ts";
 import { sharePerMillion } from "./normalize.ts";
 import { detectSpikes } from "./spikes.ts";
@@ -39,6 +40,10 @@ export interface LanguageMetrics {
     pValue: number;
     test: TrendResult["test"];
   } | null;
+  /** one word for the trend, from verdictFor(trend.sharePctPerYear, trend.pValue) on full-precision values; "inconclusive" with < 2 months */
+  verdict: Verdict;
+  /** rule-based trust in the result; reasons as "{effect} {message}", e.g. "- Median 74 views/month: too few for a reliable trend" */
+  confidence: { level: ConfidenceLevel; score: number; reasons: string[] };
   /** one-off upward spikes in raw views, top `CONFIG.spikes.maxListed` by ratio; xBaseline = views / baseline, 1 decimal */
   spikes: Array<{ month: Month; views: number; xBaseline: number }>;
 }
@@ -63,6 +68,19 @@ export function computeLanguageMetrics(months: Month[], views: number[], edition
   const pct = (c: PeriodChange | null) => (c ? round(c.pct, 1) : null);
   const startMonth = months.length ? monthOfYear(months[0]!) : 0;
   const trend = monthlyTrend(shareClean, startMonth);
+  const viewsTrend = monthlyTrend(cleaned, startMonth);
+  const n = months.length;
+  const confidence = assessConfidence({
+    medianMonthlyViews: median(views),
+    months: n,
+    pValue: trend.pValue,
+    trendPctPerYear: trend.pctPerYear,
+    viewsTrendPctPerYear: viewsTrend.pctPerYear,
+    yoyPct: yoy?.pct ?? null,
+    yoyPctWithSpikes: periodChange(share)?.pct ?? null,
+    spikesInLast12: spikes.filter((s) => s.index >= n - 12).length,
+    zeroMonthsShare: n ? views.filter((v) => v === 0).length / n : 0,
+  });
   const spikeAt = new Set(spikes.map((s) => s.index));
   const metrics: LanguageMetrics = {
     months: months.length,
@@ -78,12 +96,14 @@ export function computeLanguageMetrics(months: Month[], views: number[], edition
     trend: Number.isFinite(trend.pctPerYear)
       ? {
           sharePctPerYear: round(trend.pctPerYear, 1),
-          viewsPctPerYear: round(monthlyTrend(cleaned, startMonth).pctPerYear, 1),
+          viewsPctPerYear: round(viewsTrend.pctPerYear, 1),
           editionPctPerYear: round(monthlyTrend(edition, startMonth).pctPerYear, 1),
           pValue: round(trend.pValue, 3),
           test: trend.test,
         }
       : null,
+    verdict: verdictFor(trend.pctPerYear, trend.pValue),
+    confidence: { ...confidence, reasons: confidence.reasons.map((r) => `${r.effect} ${r.message}`) },
     spikes: [...spikes]
       .sort((a, b) => b.ratio - a.ratio)
       .slice(0, CONFIG.spikes.maxListed)

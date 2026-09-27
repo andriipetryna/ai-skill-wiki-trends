@@ -24,4 +24,30 @@ export const CONFIG = {
     /** months per seasonal cycle */
     period: 12,
   },
+  verdict: {
+    /** |trend| below this (%/yr) → flat, whatever the p-value */
+    flatPctPerYear: 5,
+    /** growing/declining need p below this; otherwise inconclusive */
+    maxP: 0.1,
+  },
+  confidence: {
+    /** median views/month: below → −0.5 and forced low */
+    veryLowVolume: 100,
+    /** below → −0.3 and capped at medium */
+    lowVolume: 1000,
+    /** months: below → seasonality cannot be separated from trend */
+    shortHistory: 24,
+    pStrong: 0.05,
+    pWeak: 0.2,
+    /** spike-driven when |yoyWithSpikes − yoy| > this many pp ... */
+    spikeDrivenPp: 10,
+    /** ... AND > this share of |yoyWithSpikes| */
+    spikeDrivenShare: 0.5,
+    /** min |%| for the sign-disagreement rules */
+    signalPct: 5,
+    /** more than this share of zero months → gaps */
+    gapsShare: 0.1,
+    /** score thresholds for the levels */
+    levels: { high: 0.7, medium: 0.4 },
+  },
 } as const;
