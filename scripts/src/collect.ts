@@ -5,7 +5,7 @@ import { computeLanguageMetrics, type LanguageMetrics, type MetricPoint } from "
 import { DEFAULT_WEIGHTS, rankLanguages, type RankInput, type RankRow, type Weights } from "./metrics/ranking.ts";
 import { resolveTopic, searchEdition, type Candidate, type Resolution } from "./resolve.ts";
 
-export const VERSION = "0.13.0";
+export const VERSION = "0.14.0";
 
 export interface CollectParams {
   topics: string[];

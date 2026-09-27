@@ -1,5 +1,5 @@
 // Smoke test of the test infrastructure (spec 09): runCli in-process against the fake Wikimedia API.
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -21,6 +21,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.useRealTimers();
   CLIENT_CONFIG.retryBaseMs = 500;
   rmSync(tmp, { recursive: true, force: true });
@@ -39,6 +40,16 @@ describe("fake API + runCli", () => {
     const res = await runCli(["analyze", "--topic", "Mercury", "--langs", "uk", "--out-dir", tmp]);
     expect(res.code).toBe(2);
     expect((res.output.candidates as Array<{ qid: string }>).map((c) => c.qid)).toEqual(["Q308", "Q925"]);
+  });
+
+  it("WT_OUT_DIR is the default --out-dir; an explicit --out-dir wins", async () => {
+    vi.stubEnv("WT_OUT_DIR", join(tmp, "env"));
+    const files = (res: Awaited<ReturnType<typeof runCli>>) => res.output.files as { data: string };
+    const byEnv = files(await runCli(["analyze", "--topic", "Astronomy", "--langs", "uk"]));
+    expect(byEnv.data.startsWith(join(tmp, "env", "wiki-trends-"))).toBe(true);
+    expect(existsSync(byEnv.data)).toBe(true);
+    const byFlag = files(await runCli(["analyze", "--topic", "Astronomy", "--langs", "uk", "--out-dir", join(tmp, "flag")]));
+    expect(byFlag.data.startsWith(join(tmp, "flag", "wiki-trends-"))).toBe(true);
   });
 
   it("retries through failFirst without sleeping", async () => {

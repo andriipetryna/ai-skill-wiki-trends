@@ -27,6 +27,7 @@ wiki-trends/
 │   ├── unit/             # pure functions
 │   ├── integration/      # the CLI in-process against the fake API
 │   └── live/             # smoke tests against the real APIs (WT_LIVE=1)
+├── evals/                # task evals: the agent itself on fixed scenarios, graded automatically (see evals/README.md)
 └── scripts/
     ├── wt                # entry point (bash): checks Node, installs dependencies
     └── src/
@@ -83,6 +84,15 @@ npm run test:integration
 npm run test:live         # real Wikimedia APIs (WT_LIVE=1); set WT_CONTACT
 ```
 
+**Task evals** (`evals/`, spec 13) run the agent itself (`claude -p`, Haiku by default) with the skill installed. The scenarios run against the synthetic world, and every transcript is graded: the command, one CLI call per turn, mentions, the PDF and chart delivered, the caveat, no own code, and every number in the answer traceable to the JSON. They cost money and are not in CI. Run them on every change to `SKILL.md` or the stdout JSON:
+
+```bash
+npm run eval                                        # all scenarios × 3 runs
+node evals/run.ts --only astronomy-trust --runs 1   # one scenario
+```
+
+See `evals/README.md` for flags, graders and recorded results.
+
 Run `npm run test:live` before a release and after touching `client.ts` or `resolve.ts`. It checks stable facts only (QIDs, titles, statuses, a one-page PDF), never view counts. `WT_CONTACT=you@example.com node tests/live/record-fixtures.ts` re-records one real response per API route into `tests/fake/recorded/`; `tests/unit/fake-shapes.test.ts` then checks that the fake API still answers in the same shapes, and fails until `tests/fake/fetch.ts` is updated when Wikimedia changes a format.
 
 Integration tests run the whole pipeline in-process (`runCli` from `scripts/src/cli.ts`) against a fake Wikimedia API: `createFakeFetch(demoWorld())` from `tests/fake/` is installed with `vi.stubGlobal("fetch", …)`. It answers in the exact shapes of the real APIs, and every series in it is generated, so the right answers are known (they are written next to the data in `tests/fake/world.ts`).
@@ -94,12 +104,11 @@ WT_FAKE_API=1 scripts/wt analyze --topic "Intermittent fasting" --langs pl,cs --
 WT_FAKE_API=1 scripts/wt analyze --topic "Mercury" --langs uk                            # ambiguous topic, exit 2
 ```
 
+`WT_OUT_DIR=DIR` makes `DIR` the default `--out-dir` (the evals use it so each agent run writes into its own workspace).
+
 The numbers are made up. Every result in this mode carries the first caveat `SYNTHETIC TEST DATA (WT_FAKE_API=1). Not real Wikipedia numbers; do not use for decisions.`, in the JSON and in the PDF. The fake world covers: Intermittent fasting (Q1666254; en, cs with a spike, pl only via search), Astronomy (Q333; uk, pl), English language (Q1860) + English as a second or foreign language (Q1321) in pl, cs, uk, de, hu, ro, and the ambiguous "Mercury". Any other topic or language is not found.
 
 ## Deliberately out of scope for the MVP (next steps)
 
 1. **Caching.** Past months never change, so they can be cached forever; this will speed up follow-up queries.
-2. **Tests and evals** (the infrastructure is in place, see Testing; specs 10–14 in `.specs/`):
-   - unit tests on synthetic data with a known answer;
-   - e2e tests against the fake API;
-   - agent runs on a cheap model, checking that every number in the answer is present in the JSON.
+2. **Triggering evals** (spec 14 in `.specs/`): does the agent pick the skill from its `description` at the right time. Unit, integration, live and task evals are in place (see Testing).

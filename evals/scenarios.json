@@ -1,0 +1,135 @@
+[
+  {
+    "id": "fasting-pl-cs",
+    "split": "dev",
+    "prompt": "Порівняй зростання інтересу до інтервального голодування в польськомовній та чеськомовній Wikipedia за останні два роки.",
+    "followUp": null,
+    "expect": {
+      "commands": ["analyze", "Intermittent fasting", "--langs[ =]\"?[a-z,]*pl", "--langs[ =]\"?[a-z,]*cs", "--years[ =]\"?2(?!\\d)|--months[ =]\"?24(?!\\d)|--from"],
+      "mentions": ["\\bpl\\b|польськ|польщ", "\\bcs\\b|чеськ|чесь", "Głodówka|Stres oksydacyjny|найближч|suggest|немає статті|відсутн", "2025-10|жовт|сплеск|spike|пік"],
+      "report": false,
+      "caveat": true,
+      "rubric": [
+        "Says Polish Wikipedia has no linked article and offers the suggested articles instead of silently picking one.",
+        "Reports the Czech result without calling it growth, and names the one-off spike month."
+      ]
+    }
+  },
+  {
+    "id": "fasting-article-followup",
+    "split": "dev",
+    "prompt": "Порівняй зростання інтересу до інтервального голодування в польськомовній та чеськомовній Wikipedia за останні два роки.",
+    "followUp": "Так, візьми Głodówka lecznicza.",
+    "expect": {
+      "commands": ["--article[ =]\"?pl=\"?G[łl]od[óo]wka"],
+      "maxWtCalls": 2,
+      "mentions": ["G[łl]od[óo]wk", "2025-10|жовт|сплеск|spike|пік", "зроста|росте|growing"],
+      "caveat": true,
+      "rubric": [
+        "In the second reply, reports Polish results for «Głodówka lecznicza» and says this article was chosen manually or is only a proxy for intermittent fasting.",
+        "Compares Polish and Czech by share of edition traffic (views per million pageviews) or growth rates, not by raw view counts or ratios of views."
+      ]
+    }
+  },
+  {
+    "id": "astronomy-trust",
+    "split": "dev",
+    "prompt": "Чи зростає інтерес до астрономії в українській Вікіпедії, і наскільки можна довіряти цьому зростанню?",
+    "followUp": null,
+    "expect": {
+      "commands": ["analyze", "Astronomy", "--langs[ =]\"?uk(?![a-z])"],
+      "mentions": ["довір|надійн|впевнен|confidence", "частк|на мільйон|share|нормаліз", "зроста|росте|growing"],
+      "caveat": true,
+      "rubric": [
+        "States the confidence level (high) and at least one reason behind it.",
+        "Explains that growth is measured as the topic's share of the Ukrainian edition's traffic, and that it grows faster than raw views because the edition's overall traffic is falling.",
+        "Does not describe views per million as per million people, residents or population."
+      ]
+    }
+  },
+  {
+    "id": "english-report",
+    "split": "dev",
+    "prompt": "Порівняй інтерес до вивчення англійської мови в польській, чеській, українській, німецькій, угорській і румунській Вікіпедії. Які аудиторії варто дослідити далі і чому? Зроби короткий звіт у PDF українською.",
+    "followUp": null,
+    "expect": {
+      "commands": [
+        "analyze",
+        "English language",
+        "--langs[ =]\"?(?=[a-z,]*\\bpl\\b)(?=[a-z,]*\\bcs\\b)(?=[a-z,]*\\buk\\b)(?=[a-z,]*\\bde\\b)(?=[a-z,]*\\bhu\\b)(?=[a-z,]*\\bro\\b)",
+        "--report(?![\\w-])",
+        "--report-lang[ =]\"?uk"
+      ],
+      "mentions": ["\\bro\\b|румун", "низьк|ненадійн|low", "рейтинг|ранжу|ranking|порядок|пріоритет|черг", "(^|[^а-яіїєґ])ваг|weight"],
+      "report": true,
+      "caveat": true,
+      "rubric": [
+        "Names Romanian (ro) as low confidence because of low volume and says its numbers do not support a conclusion.",
+        "Gives the suggested order of languages with Ukrainian first, states the ranking weights and offers to change them.",
+        "Never compares languages by raw view counts or by ratios of views."
+      ]
+    }
+  },
+  {
+    "id": "ambiguous-mercury",
+    "split": "dev",
+    "prompt": "Який інтерес до теми Mercury в українській Вікіпедії?",
+    "followUp": null,
+    "expect": {
+      "commands": ["Mercury"],
+      "mentions": ["планет|planet", "елемент|element|ртуть|хімічн"],
+      "caveat": false,
+      "rubric": [
+        "Asks the user whether they mean the planet Mercury or the chemical element mercury.",
+        "Does not present pageview numbers or a trend for either meaning before the user answers."
+      ]
+    }
+  },
+  {
+    "id": "missing-language",
+    "split": "holdout",
+    "prompt": "Порівняй, як змінюється інтерес до астрономії в українській та угорській Вікіпедії.",
+    "followUp": null,
+    "expect": {
+      "commands": ["analyze", "Astronomy", "--langs[ =]\"?[a-z,]*hu", "--langs[ =]\"?[a-z,]*uk"],
+      "mentions": ["\\bhu\\b|угорськ", "немає|відсутн|не знайд|no article"],
+      "caveat": true,
+      "rubric": [
+        "Says Hungarian Wikipedia has no article on astronomy in this data, so no Hungarian trend can be given, and invents no numbers for it."
+      ]
+    }
+  },
+  {
+    "id": "followup-add-lang",
+    "split": "dev",
+    "prompt": "Чи зростає інтерес до астрономії в українській Вікіпедії?",
+    "followUp": "Додай польську і зроби PDF англійською.",
+    "expect": {
+      "commands": ["--langs[ =]\"?[a-z,]*(uk[a-z,]*pl|pl[a-z,]*uk)", "--report(?![\\w-])", "--report-lang[ =]\"?en"],
+      "maxWtCalls": 2,
+      "mentions": ["\\bpl\\b|польськ"],
+      "report": true,
+      "caveat": true,
+      "rubric": ["The second reply covers both Ukrainian and Polish and gives the path or a link to the English PDF report."]
+    }
+  },
+  {
+    "id": "custom-weights",
+    "split": "holdout",
+    "prompt": "Ми вибираємо, яку аудиторію досліджувати далі щодо астрономії: українську чи польську Вікіпедію. Для нас важливіше зростання, ніж розмір аудиторії.",
+    "followUp": null,
+    "expect": {
+      "commands": [
+        "analyze",
+        "Astronomy",
+        "--langs[ =]\"?[a-z,]*(uk[a-z,]*pl|pl[a-z,]*uk)",
+        "--weights[ =]\"?[^\\s\"]*(growth=(1\\.\\d*[1-9]|[2-9]|[1-9]\\d)|volume=0(\\.0*)?(?![\\d.]))"
+      ],
+      "mentions": ["(^|[^а-яіїєґ])ваг|weight", "зроста|growth"],
+      "caveat": true,
+      "rubric": [
+        "Recommends which audience to research next from the growth-weighted ranking, explains it mainly by growth of the topic's share, and states the weights used."
+      ]
+    }
+  }
+]

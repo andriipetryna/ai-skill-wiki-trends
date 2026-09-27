@@ -18,7 +18,7 @@ const HELP = `wiki-trends ${VERSION}
            [--no-redirects]  exclude views of redirects (old/alternative titles; included by default)
            [--weights volume=1,growth=1,confidence=1,share=0]  ranking weights; any subset, the rest keep these defaults
            [--report] [--report-lang uk|en] [--title "..."] [--notes "..."] [--out file.pdf]
-           [--out-dir DIR]   write files to DIR/wiki-trends-<timestamp>/ (default: <skill>/output/<timestamp>/)
+           [--out-dir DIR]   write files to DIR/wiki-trends-<timestamp>/ (default: $WT_OUT_DIR, else <skill>/output/<timestamp>/)
 Topic = English Wikipedia title (or title in --from-lang) or a Wikidata QID.\n--article lang=Title uses that article in that language instead of the Wikidata link.`;
 
 type Output = Record<string, unknown>;
@@ -57,8 +57,10 @@ export async function runCli(argv: string[]): Promise<CliResult> {
     const caveats: Caveat[] = [...(syntheticMode() ? [{ code: "synthetic" } as const] : []), ...buildCaveats(result)];
 
     // Output files: data.json (incl. monthly series and caveat codes), chart.svg + chart.png, optional report PDF
+    // WT_OUT_DIR (evals: the agent chooses the flags, the harness chooses where files go) is the default --out-dir
     const stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
-    const outDir = a.outDir ? join(resolve(process.cwd(), a.outDir), `wiki-trends-${stamp}`) : join(SKILL_ROOT, "output", stamp);
+    const outBase = a.outDir ?? (process.env.WT_OUT_DIR || undefined);
+    const outDir = outBase ? join(resolve(process.cwd(), outBase), `wiki-trends-${stamp}`) : join(SKILL_ROOT, "output", stamp);
     mkdirSync(outDir, { recursive: true });
     writeFileSync(join(outDir, "data.json"), JSON.stringify({ version: VERSION, query, ...data, caveats }, null, 1));
     const chartSvg = await renderViewsChart(data.perLanguage, langs, LABELS[uiLang].yTitle);

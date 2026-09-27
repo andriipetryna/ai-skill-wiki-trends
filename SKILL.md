@@ -3,7 +3,7 @@ name: wiki-trends
 description: Fetch and compare Wikipedia pageviews for a topic across language editions (Wikimedia Pageviews API), with a chart and a one-page PDF report. Use when a user asks whether interest in a topic is growing, compares interest between languages, or wants a shareable report on topic interest from Wikipedia.
 compatibility: Requires Node.js >= 22.18 and network access to wikimedia.org, wikipedia.org, wikidata.org and the npm registry (first run only).
 metadata:
-  version: "0.13.0"
+  version: "0.14.0"
 ---
 
 # Wikipedia interest trends

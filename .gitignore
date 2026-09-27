@@ -196,3 +196,5 @@ dist
 
 output/
 .claude
+evals/results/
+evals/.cache/
