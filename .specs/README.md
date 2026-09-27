@@ -19,8 +19,16 @@ Each spec leaves the skill in a working state, so they can be merged one at a ti
 | 06 | `06-verdict-confidence.md` | verdict, confidence with reasons | 03, 04, 05 |
 | 07 | `07-ranking.md` | ranking of languages with user weights | 06 |
 | 08 | `08-agent-output.md` | ready-made findings, answer checklist, SKILL.md, final PDF | 01–07 |
+| 09 | `09-test-infrastructure.md` | vitest, `runCli`, fake Wikimedia API, `WT_FAKE_API=1`, CI | — |
+| 10 | `10-unit-tests.md` | unit tests; ports every "Verification" section of 01–08 | 09 |
+| 11 | `11-integration-contract-tests.md` | end-to-end CLI on the fake API, JSON contract vs SKILL.md, PDF, launcher | 09 |
+| 12 | `12-live-smoke-tests.md` | live Wikimedia smoke tests, recorded response shapes | 09 |
+| 13 | `13-task-evals.md` | agent on a cheap model end to end, graders, number-hallucination checker | 09, 11 |
+| 14 | `14-trigger-evals.md` | does the agent pick the skill from its description | 13 |
 
 02 is independent and can be done at any point.
+
+**Tests vs metrics order.** Testing (09–14) does not depend on the metrics (01–08). Recommended: implement **09 and 11 first**, on the MVP, so every later change is protected. Then, for each metric spec 01–08, add its unit tests as part of that spec (10 describes what to port). Items in 10, 11 and 13 marked "after spec NN" are added when that spec lands.
 
 ## How to give a spec to Claude Code
 
@@ -83,16 +91,16 @@ scripts/src/
       Math.round(base * (1 + g / 100) ** (i / 12) * (1 + season * Math.cos((2 * Math.PI * (i + phase)) / 12)) * (1 + nz * noise(i))));
   ```
 
-## Verification without tests
+## Verification without tests (until 09 is implemented)
 
-There is no test framework yet. Each spec has a "Verification" section:
+Until spec 09 lands there is no test framework. Each spec has a "Verification" section:
 1. Write a throwaway script in `/tmp` (do not commit it) that imports functions from `scripts/src/metrics/*.ts` and prints the results.
 2. Run it with `node --disable-warning=ExperimentalWarning /tmp/check.ts`.
 3. Compare against the expected values in the spec.
 
 The expected numbers were produced by a reference implementation. Tolerance is the last rounded digit unless stated otherwise. Also always run `npm run typecheck` and do one manual `scripts/wt analyze` run on real data.
 
-When tests are added later, the "Verification" sections become ready-made test cases.
+After 09, the "Verification" sections become committed test cases instead (see 10).
 
 ## Definition of Done (every spec)
 
@@ -102,4 +110,5 @@ When tests are added later, the "Verification" sections become ready-made test c
 - [ ] `scripts/wt analyze ... --report --report-lang uk` works on real data; the PDF has exactly one page; `chart.png` looks right.
 - [ ] `SKILL.md` is updated where the agent-facing output changed; `metadata.version` and `VERSION` are bumped (minor).
 - [ ] `CLAUDE.md` "Architecture" is updated if modules were added.
-- [ ] No new dependencies.
+- [ ] No new dependencies (09 is the only spec that adds some: dev-only `vitest` and `zod`).
+- [ ] Once 09 exists: the spec's "Verification" items are committed as tests (see 10), and `npm test` passes.
