@@ -15,10 +15,11 @@ scripts/wt resolve --topic "Astronomy" --langs uk,pl
 scripts/wt --help
 
 npm run typecheck         # tsc --noEmit (also covers tests/, evals/, vitest.config.ts)
-npm test                  # typecheck + vitest unit + integration projects (offline); what CI runs
+npm test                  # typecheck + vitest unit + integration (offline; live reported as skipped); what CI runs
 npm run test:unit         # vitest --project unit
 npm run test:integration  # vitest --project integration
-npm run test:live         # WT_LIVE=1, real Wikimedia APIs; never in CI
+npm run test:live         # WT_LIVE=1, real Wikimedia APIs (needs WT_CONTACT); never in CI
+WT_CONTACT=… node tests/live/record-fixtures.ts   # re-record real response shapes into tests/fake/recorded/
 npx vitest run tests/unit/fake-noise.test.ts   # a single file
 npm run wt -- ...         # same as scripts/wt but without the Node-version guard / auto-install
 WT_FAKE_API=1 scripts/wt analyze ...           # real CLI on synthetic data, no network (see Testing)
@@ -70,7 +71,8 @@ Specs 09–14 in `.specs/`. Layers (vitest projects in `vitest.config.ts`):
 - **unit** (`tests/unit/`, one file per source module; `tests/unit/metrics/` mirrors `scripts/src/metrics/`): pure functions; series from `gen()` / `genSeries()` in `tests/fake/noise.ts`, never long hand-typed arrays. Every "Verification" item of specs 01–08 is ported as a test (spec 10); a failing ported value means check the code against the spec first. Every bug fix adds a test named `regression: <what broke>`.
 - **integration** (`tests/integration/`, 30 s timeout): `runCli([...args, "--out-dir", tmp])` in-process with `vi.stubGlobal("fetch", createFakeFetch(demoWorld()))`, `vi.setSystemTime(...)` for the clock (the CLI reads `new Date()`) and `CLIENT_CONFIG.retryBaseMs = 0` so retries do not sleep. `helpers.ts` wraps this: `setupFake(world?, opts?)` (undone after each test, which also fails on any request to an unknown fake route), `analyze(args)` (asserts exit 0 and parses with the contract), `pdfPageCount`/`pdfText` (pdfkit PDFs decoded via their ToUnicode CMaps). `launcher.test.ts` runs the real `scripts/wt` through a symlinked skill dir with `WT_FAKE_API=1`.
 - **contract** (`tests/contract/schema.ts`): zod schemas of the stdout JSON (`AnalysisOutputSchema`, `ResolveOutputSchema`, `ErrorOutputSchema`), loose objects so added fields pass and removed/renamed ones fail. `contract.test.ts` also checks that every field path backticked in `SKILL.md` exists in a real output. Renaming an output field means updating the schema and `SKILL.md` together.
-- **live** (`tests/live/`, 120 s): real APIs, only collected when `WT_LIVE=1`.
+- **live** (`tests/live/`, 120 s): `smoke.test.ts` runs the real `runCli` against the real APIs and asserts stable facts only (QIDs, titles, statuses, a 1-page PDF, a sane share range), never view counts; ~15 requests, keep it under ~40. Skipped unless `WT_LIVE=1`; with it, `WT_CONTACT` is required. Run `npm run test:live` before a release and after touching `client.ts` or `resolve.ts`; re-record fixtures when it fails on shape.
+- **recorded shapes**: `tests/live/record-fixtures.ts` (a script) saves one real response per route (exact-title, search, redirects, wbgetentities, per-article, per-article-404, aggregate) to `tests/fake/recorded/<route>.json` as `{ route, url, status, body }`, calling the real client functions so the URLs are exactly the CLI's. `tests/unit/fake-shapes.test.ts` replays each URL against `createFakeFetch(demoWorld())` and compares recursive key/type skeletons (values and array lengths ignored; `entities`/`labels`/`sitelinks` are maps; `continue`/`disambiguation` compared only when both sides have them). The recorded titles must exist both on Wikipedia and in `demoWorld()`. When it fails after re-recording, update `tests/fake/fetch.ts`.
 - **evals** (`evals/`, `npm run eval`): the agent end to end on the synthetic world; not in CI.
 
 Fake Wikimedia API (`tests/fake/`): `noise.ts` (deterministic `noise`/`gen`/`genSeries`, and `gens.growth(base, %/yr, {season, peak, noise, seed, spikes})` anchored at 2024-07), `world.ts` (`FakeWorld` + `demoWorld()`; ground truth in the comment above it — change the data and that comment together), `fetch.ts` (`createFakeFetch(world, { failFirst?, failStatus? })`, routes by URL, records `.calls` and `.unknown`; unknown routes get `404 { error: "unknown fake route" }`). Responses must match the real shapes (route table in spec 09): e.g. months with 0 views are omitted, search `pages` are not sorted by `index`. `tests/fake/` must not import dev dependencies: the CLI loads it at runtime.

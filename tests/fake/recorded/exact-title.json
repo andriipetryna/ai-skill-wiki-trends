@@ -1,0 +1,23 @@
+{
+ "route": "exact-title",
+ "recordedAt": "2026-09-27T18:22:30.567Z",
+ "url": "https://en.wikipedia.org/w/api.php?format=json&formatversion=2&action=query&titles=Astronomy&redirects=1&prop=pageprops%7Cdescription&ppprop=wikibase_item%7Cdisambiguation",
+ "status": 200,
+ "body": {
+  "batchcomplete": true,
+  "query": {
+   "pages": [
+    {
+     "pageid": 50650,
+     "ns": 0,
+     "title": "Astronomy",
+     "pageprops": {
+      "wikibase_item": "Q333"
+     },
+     "description": "Scientific study of celestial objects",
+     "descriptionsource": "local"
+    }
+   ]
+  }
+ }
+}

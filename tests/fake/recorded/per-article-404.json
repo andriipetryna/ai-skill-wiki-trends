@@ -1,0 +1,14 @@
+{
+ "route": "per-article-404",
+ "recordedAt": "2026-09-27T18:22:32.061Z",
+ "url": "https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/pl.wikipedia/all-access/user/Zzzz_nonexistent_12345/monthly/20240101/20241231",
+ "status": 404,
+ "body": {
+  "detail": "The date(s) you used are valid, but we either do not have data for those date(s), or the project you asked for is not loaded yet. Please check documentation for more information",
+  "method": "get",
+  "status": 404,
+  "title": "Not Found",
+  "type": "about:blank",
+  "uri": "/metrics/pageviews/per-article/pl.wikipedia/all-access/user/Zzzz_nonexistent_12345/monthly/20240101/20241231"
+ }
+}

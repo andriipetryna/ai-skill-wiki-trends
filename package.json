@@ -10,7 +10,7 @@
   "scripts": {
     "wt": "node scripts/src/cli.ts",
     "typecheck": "tsc --noEmit",
-    "test": "npm run typecheck && vitest run --project unit --project integration",
+    "test": "npm run typecheck && vitest run --project unit --project integration --project live",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:live": "WT_LIVE=1 vitest run --project live",

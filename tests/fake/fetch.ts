@@ -20,7 +20,7 @@ export type FakeFetch = ((input: string | URL | Request, init?: RequestInit) => 
 
 const PAGEVIEWS = "/api/rest_v1/metrics/pageviews/";
 const NO_DATA =
-  "The date(s) you used are valid, but we either do not have data for those date(s), or the project you asked for is not loaded yet. Please check documentation for more information.";
+  "The date(s) you used are valid, but we either do not have data for those date(s), or the project you asked for is not loaded yet. Please check documentation for more information";
 
 export function createFakeFetch(world: FakeWorld, opts: FakeFetchOptions = {}): FakeFetch {
   const calls: string[] = [];
@@ -89,8 +89,8 @@ function toMonth(yyyymmdd: string): Month {
 }
 
 function notFound(u: URL): Response {
-  const uri = u.pathname.replace("/api/rest_v1/", "/analytics.wikimedia.org/v1/");
-  return json(404, { type: "https://mediawiki.org/wiki/HyperSwitch/errors/not_found", title: "Not found.", method: "get", detail: NO_DATA, uri });
+  const uri = u.pathname.replace("/api/rest_v1", "");
+  return json(404, { detail: NO_DATA, method: "get", status: 404, title: "Not Found", type: "about:blank", uri });
 }
 
 // ---- MediaWiki Action API: exact title lookup, full-text search, redirects
@@ -122,11 +122,14 @@ function actionApi(ed: FakeEdition, q: URLSearchParams): Response | null {
   if (q.get("generator") === "search") {
     const query = (q.get("gsrsearch") ?? "").trim().toLowerCase();
     const limit = Number(q.get("gsrlimit") ?? 10);
-    const hits = (ed.search?.[query] ?? titles.filter((t) => !ed.articles[t]!.redirectTo && t.toLowerCase().includes(query))).slice(0, limit);
+    const all = ed.search?.[query] ?? titles.filter((t) => !ed.articles[t]!.redirectTo && t.toLowerCase().includes(query));
+    const hits = all.slice(0, limit);
     if (!hits.length) return json(200, { batchcomplete: true });
     const pages = hits.map((t, i) => page(t, ed.articles[t]!, { index: i + 1 }));
+    // more hits than the limit: the real API offers the next page (the client never follows it)
+    const more = all.length > limit ? { continue: { gsroffset: limit, continue: "gsroffset||" } } : {};
     // the real API does not order `pages` by `index`
-    return json(200, { batchcomplete: true, query: { pages: shuffle(pages) } });
+    return json(200, { batchcomplete: true, ...more, query: { pages: shuffle(pages) } });
   }
 
   const requested = (q.get("titles") ?? "").split("|").filter(Boolean);

@@ -77,11 +77,13 @@ Verified against real API responses: for "Intermittent fasting" (Q1666254) Wikid
 ## Testing
 
 ```bash
-npm test                  # typecheck + unit + integration (offline, against the fake API); what CI runs
+npm test                  # typecheck + unit + integration (offline, against the fake API); live tests show as skipped; what CI runs
 npm run test:unit
 npm run test:integration
 npm run test:live         # real Wikimedia APIs (WT_LIVE=1); set WT_CONTACT
 ```
+
+Run `npm run test:live` before a release and after touching `client.ts` or `resolve.ts`. It checks stable facts only (QIDs, titles, statuses, a one-page PDF), never view counts. `WT_CONTACT=you@example.com node tests/live/record-fixtures.ts` re-records one real response per API route into `tests/fake/recorded/`; `tests/unit/fake-shapes.test.ts` then checks that the fake API still answers in the same shapes, and fails until `tests/fake/fetch.ts` is updated when Wikimedia changes a format.
 
 Integration tests run the whole pipeline in-process (`runCli` from `scripts/src/cli.ts`) against a fake Wikimedia API: `createFakeFetch(demoWorld())` from `tests/fake/` is installed with `vi.stubGlobal("fetch", …)`. It answers in the exact shapes of the real APIs, and every series in it is generated, so the right answers are known (they are written next to the data in `tests/fake/world.ts`).
 

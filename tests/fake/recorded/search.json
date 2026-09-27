@@ -1,0 +1,84 @@
+{
+ "route": "search",
+ "recordedAt": "2026-09-27T18:22:30.913Z",
+ "url": "https://en.wikipedia.org/w/api.php?format=json&formatversion=2&action=query&generator=search&gsrsearch=Astronomy&gsrlimit=6&gsrnamespace=0&prop=pageprops%7Cdescription&ppprop=wikibase_item%7Cdisambiguation",
+ "status": 200,
+ "body": {
+  "batchcomplete": true,
+  "continue": {
+   "gsroffset": 6,
+   "continue": "gsroffset||"
+  },
+  "query": {
+   "pages": [
+    {
+     "pageid": 14021,
+     "ns": 0,
+     "title": "History of astronomy",
+     "index": 3,
+     "pageprops": {
+      "wikibase_item": "Q50056"
+     },
+     "description": "",
+     "descriptionsource": "local"
+    },
+    {
+     "pageid": 26751,
+     "ns": 0,
+     "title": "Sun",
+     "index": 5,
+     "pageprops": {
+      "wikibase_item": "Q525"
+     },
+     "description": "Star at the centre of the Solar System",
+     "descriptionsource": "local"
+    },
+    {
+     "pageid": 50650,
+     "ns": 0,
+     "title": "Astronomy",
+     "index": 1,
+     "pageprops": {
+      "wikibase_item": "Q333"
+     },
+     "description": "Scientific study of celestial objects",
+     "descriptionsource": "local"
+    },
+    {
+     "pageid": 82961,
+     "ns": 0,
+     "title": "Radio astronomy",
+     "index": 6,
+     "pageprops": {
+      "wikibase_item": "Q4306"
+     },
+     "description": "Subfield of astronomy that studies celestial objects at radio frequencies",
+     "descriptionsource": "local"
+    },
+    {
+     "pageid": 200006,
+     "ns": 0,
+     "title": "Epoch (astronomy)",
+     "index": 4,
+     "pageprops": {
+      "wikibase_item": "Q2703"
+     },
+     "description": "Moment in time used as a reference point in astronomy",
+     "descriptionsource": "local"
+    },
+    {
+     "pageid": 5081125,
+     "ns": 0,
+     "title": "Astronomy (disambiguation)",
+     "index": 2,
+     "pageprops": {
+      "disambiguation": "",
+      "wikibase_item": "Q3627653"
+     },
+     "description": "Topics referred to by the same term",
+     "descriptionsource": "local"
+    }
+   ]
+  }
+ }
+}
