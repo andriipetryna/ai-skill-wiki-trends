@@ -19,6 +19,8 @@ The first run executes `npm ci --omit=dev` from `package-lock.json` on its own. 
 ```
 wiki-trends/
 ├── SKILL.md              # instructions for the agent
+├── references/
+│   └── methodology.md    # formulas and thresholds; the agent reads it only when asked
 ├── package.json / package-lock.json / tsconfig.json / .nvmrc
 └── scripts/
     ├── wt                # entry point (bash): checks Node, installs dependencies
@@ -29,7 +31,8 @@ wiki-trends/
         ├── collect.ts    # monthly views (article + its redirects) + edition traffic, a "basket" of several topics, 12-month periods and % change
         ├── dates.ts      # month handling
         ├── charts.ts     # Vega-Lite → SVG (share per million), resvg → PNG
-        ├── report.ts     # pdfkit → one-page PDF (en/uk, Cyrillic via DejaVu)
+        ├── report.ts     # pdfkit → one-page PDF: findings, chart, table, notes, caveats (en/uk, Cyrillic via DejaVu)
+        ├── text.ts       # all human-facing text: labels, findings, caveats (en/uk), answer checklist for the agent
         └── metrics/      # pure metric functions: stats helpers, normalisation; index.ts applies them in order
 ```
 
@@ -58,6 +61,11 @@ What `analyze` returns for each language:
 - `status: "no_article"` + `suggestions` — Wikidata has no article in this language, so the CLI searches for candidates in the edition itself; the chosen article can be passed via `--article pl="…"`.
 
 Across languages, `analyze` also returns `ranking` — a suggested order in which to investigate the languages (only when at least 2 have data, otherwise `[]`). Each language gets four components, min-max normalised to 0–1 across the languages of the run (0.5 for everyone when a component does not vary): `volume` (log10 of median monthly views), `growth` (`trend.sharePctPerYear`, clamped to −100…200), `confidence` (`confidence.score`) and `share` (log10 of `sharePerMillion.last12Avg`). `score` is their weighted mean; the weights are set with `--weights volume=1,growth=1,confidence=1,share=0` (these are the defaults; any subset can be given) and echoed in `query.weights`. The ranking is relative: it only compares the languages of this run, under these weights. The PDF table is sorted by rank, with a "Suggested order to investigate" line under it.
+
+For the agent, `analyze` also returns three fields generated for the exact result, so that even a cheap model answers correctly without computing anything:
+- `findings` — ready-made sentences with all the key numbers (per language, relative interest by share per million, the ranking with its weights, edition-wide traffic shifts);
+- `answerChecklist` — what the reply must contain (PDF path and chart first, low confidence, spikes, missing articles, how to compare languages, caveats);
+- `caveats` — data-dependent limitations (interest ≠ willingness to pay, normalisation, period, search-matched topics, missing articles, manual articles, redirects, single article, cross-language, bots). `data.json` keeps them as codes so the PDF renders them in its own language.
 
 Verified against real API responses: for "Intermittent fasting" (Q1666254) Wikidata has no Polish article; the closest is the broader "Głodówka lecznicza". So the first example from the task requires a decision from the user.
 

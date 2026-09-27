@@ -60,4 +60,8 @@ export const CONFIG = {
     /** max − min below this → the component is equal for everyone (0.5) */
     minRange: 1e-12,
   },
+  findings: {
+    /** |edition trend| (%/yr) from which a finding explains that share, not raw views, is the fair measure */
+    editionShiftPctPerYear: 10,
+  },
 } as const;

@@ -7,8 +7,9 @@ import { ApiError } from "./client.ts";
 import { collect, ResolveError, VERSION } from "./collect.ts";
 import { addMonths, FIRST_AVAILABLE_MONTH, lastCompleteMonth } from "./dates.ts";
 import { DEFAULT_WEIGHTS, WEIGHT_KEYS, type Weights } from "./metrics/ranking.ts";
-import { LABELS, writeReport, type UiLang } from "./report.ts";
+import { writeReport } from "./report.ts";
 import { resolveTopic } from "./resolve.ts";
+import { buildAnswerChecklist, buildCaveats, buildFindings, LABELS, renderCaveat, type UiLang } from "./text.ts";
 
 const SKILL_ROOT = resolve(import.meta.dirname, "../..");
 const LANG_RE = /^[a-z]{2,3}(-[a-z]+)*$/;
@@ -98,12 +99,15 @@ async function main(argv: string[]): Promise<{ code: number; output: Output }> {
     const redirects = v.redirects;
     const data = await collect({ topics, langs, fromLang, articles, from, to, redirects, weights });
     const uiLang: UiLang = v["report-lang"] === "uk" ? "uk" : "en";
+    const query = { topics, articles, langs, fromLang, from, to, redirects, weights };
+    const result = { query, ...data };
+    const caveats = buildCaveats(result);
 
-    // Output files: data.json (incl. monthly series), chart.svg + chart.png, optional report PDF
+    // Output files: data.json (incl. monthly series and caveat codes), chart.svg + chart.png, optional report PDF
     const stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
     const outDir = v["out-dir"] ? join(resolve(process.cwd(), v["out-dir"]), `wiki-trends-${stamp}`) : join(SKILL_ROOT, "output", stamp);
     mkdirSync(outDir, { recursive: true });
-    writeFileSync(join(outDir, "data.json"), JSON.stringify({ version: VERSION, query: { topics, langs, fromLang, from, to, redirects, weights }, ...data }, null, 1));
+    writeFileSync(join(outDir, "data.json"), JSON.stringify({ version: VERSION, query, ...data, caveats }, null, 1));
     const chartSvg = await renderViewsChart(data.perLanguage, langs, LABELS[uiLang].yTitle);
     const chartPath = chartSvg ? join(outDir, "chart.svg") : null;
     const chartPngPath = chartSvg ? join(outDir, "chart.png") : null;
@@ -117,15 +121,8 @@ async function main(argv: string[]): Promise<{ code: number; output: Output }> {
       reportPath = await writeReport({
         out: v.out ? resolve(process.cwd(), v.out) : join(outDir, `report-${uiLang}.pdf`),
         lang: uiLang,
-        chartSvg,
-        resolution: data.resolution,
-        perLanguage: data.perLanguage,
-        ranking: data.ranking,
-        weights,
-        langs,
-        from,
-        to,
-        redirects,
+        result,
+        caveats,
         ...(v.title ? { title: v.title } : {}),
         ...(v.notes ? { notes: v.notes } : {}),
       });
@@ -135,12 +132,14 @@ async function main(argv: string[]): Promise<{ code: number; output: Output }> {
       code: 0,
       output: {
         ok: true,
-        query: { topics, articles, langs, fromLang, from, to, redirects, weights },
+        query,
         resolution: data.resolution,
         // monthly series stays in data.json to keep the agent's context small
         perLanguage: data.perLanguage.map(({ monthly: _m, ...rest }) => rest),
         ranking: data.ranking,
-        caveats: [...LABELS.en.caveatList, LABELS.en.redirectsCaveat(redirects)],
+        findings: buildFindings(result, "en"),
+        answerChecklist: buildAnswerChecklist(result, reportPath, chartPngPath),
+        caveats: caveats.map((c) => renderCaveat(c, "en")),
         files: { data: join(outDir, "data.json"), chart: chartPath, chartPng: chartPngPath, report: reportPath },
       },
     };

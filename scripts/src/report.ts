@@ -1,103 +1,35 @@
-// One-page A4 PDF: title, table per language, chart, caveats. All numbers come from the collected data.
+// One-page A4 PDF: title, key findings, chart, table per language, agent notes, caveats. All numbers come from the collected data.
 import { createWriteStream } from "node:fs";
 import { join, resolve } from "node:path";
 import PDFDocument from "pdfkit";
 import SVGtoPDF from "svg-to-pdfkit";
-import { FONT_DIR, langColors } from "./charts.ts";
+import { FONT_DIR, langColors, renderViewsChart } from "./charts.ts";
 import type { LanguageResult } from "./collect.ts";
-import { WEIGHT_KEYS, type RankRow, type Weights } from "./metrics/ranking.ts";
-import type { Resolution } from "./resolve.ts";
-
-export type UiLang = "en" | "uk";
+import { buildFindings, int, LABELS, pfmt, renderCaveat, signed, type AnalysisResult, type Caveat, type UiLang } from "./text.ts";
 
 const INK = "#0b0b0b";
 const INK_2 = "#52514e";
 const MUTED = "#8a8984";
 const RULE = "#e6e5e1";
 
-export const LABELS = {
-  en: {
-    table: "By language",
-    chart: "Monthly share of the edition's traffic",
-    notes: "Interpretation (written by the AI agent)",
-    caveats: "Limitations",
-    cols: ["Lang", "Article", "Avg / month", "Per million", "YoY share", "Trend/yr", "p", "Verdict", "Confidence"],
-    verdicts: { growing: "growing", declining: "declining", flat: "flat", inconclusive: "inconclusive" },
-    levels: { high: "high", medium: "medium", low: "low" },
-    ranking: "Suggested order to investigate",
-    weights: "weights",
-    weightNames: { volume: "volume", growth: "growth", confidence: "confidence", share: "share" },
-    meta: (langs: string, from: string, to: string, date: string) => `Wikipedia pageviews · ${langs} · ${from} – ${to} · generated ${date}`,
-    defaultTitle: (t: string) => `Interest in “${t}” on Wikipedia`,
-    noArticle: "no article",
-    noData: "no data",
-    yTitle: "Views per million pageviews of the edition",
-    spikeCaption: "Rings = one-off spikes, excluded from YoY and trend.",
-    footer: "Data: Wikimedia Pageviews API (agent=user, all-access). YoY = last 12 months vs the previous 12, on share per million.",
-    caveatList: [
-      "Pageviews show curiosity, not willingness to pay: a signal for further validation.",
-      "Raw views are not comparable across languages: editions differ greatly in size.",
-      "Share = article views per million pageviews of the whole language edition (not per million people).",
-      "A single article is a proxy for the topic.",
-      "Trend/yr = robust growth of the share per year over the whole range (seasonal Sen slope); p < 0.05 means it is unlikely to be noise (seasonal Mann–Kendall).",
-    ],
-    redirectsCaveat: (on: boolean) =>
-      on
-        ? "Views of redirects (alternative titles, up to 25 per article) are included."
-        : "Redirect views are excluded; renamed articles may show artificial drops.",
-  },
-  uk: {
-    table: "За мовами",
-    chart: "Частка в трафіку розділу за місяць",
-    notes: "Інтерпретація (написав AI-агент)",
-    caveats: "Обмеження",
-    cols: ["Мова", "Стаття", "Сер. / міс", "На мільйон", "Рік-до-року", "Тренд/рік", "p", "Висновок", "Довіра"],
-    verdicts: { growing: "зростає", declining: "спадає", flat: "стабільний", inconclusive: "неоднозначно" },
-    levels: { high: "висока", medium: "середня", low: "низька" },
-    ranking: "Порядок для подальшого дослідження",
-    weights: "ваги",
-    weightNames: { volume: "обсяг", growth: "зростання", confidence: "довіра", share: "частка" },
-    meta: (langs: string, from: string, to: string, date: string) => `Перегляди Wikipedia · ${langs} · ${from} – ${to} · створено ${date}`,
-    defaultTitle: (t: string) => `Інтерес до «${t}» у Wikipedia`,
-    noArticle: "немає статті",
-    noData: "немає даних",
-    yTitle: "Переглядів на мільйон переглядів розділу",
-    spikeCaption: "Кільця = разові сплески, виключені з рік-до-року і тренду.",
-    footer: "Дані: Wikimedia Pageviews API (agent=user, all-access). Рік-до-року = останні 12 міс. проти попередніх 12, на частці на мільйон.",
-    caveatList: [
-      "Перегляди відображають цікавість, а не готовність платити: це сигнал для подальшої перевірки.",
-      "Сирі перегляди не порівнюються між мовами: розділи дуже різні за розміром.",
-      "Частка = переглядів статті на мільйон усіх переглядів мовного розділу (не на мільйон людей).",
-      "Одна стаття — лише проксі теми.",
-      "Тренд/рік = стійкий річний приріст частки за весь період (сезонний нахил Сена); p < 0,05 означає, що це навряд чи шум (сезонний тест Манна–Кендалла).",
-    ],
-    redirectsCaveat: (on: boolean) =>
-      on
-        ? "Враховано перегляди перенаправлень (альтернативних назв, до 25 на статтю)."
-        : "Перенаправлення не враховано; перейменовані статті можуть показувати штучне падіння.",
-  },
-} as const;
+const MAX_FINDINGS = 9;
+const MAX_ROWS = 12;
+const NOTES_MAX_CHARS = 600;
+const DEFAULT_PLOT_HEIGHT = 220;
 
 export interface ReportInput {
   out: string;
   lang: UiLang;
   title?: string;
   notes?: string;
-  chartSvg: string | null;
-  resolution: Resolution[];
-  perLanguage: LanguageResult[];
-  /** empty when fewer than two languages have data */
-  ranking: RankRow[];
-  weights: Weights;
-  langs: string[];
-  from: string;
-  to: string;
-  /** whether redirect views were summed into the articles */
-  redirects: boolean;
+  /** the analyze result, with the per-month series (the report draws its own chart) */
+  result: AnalysisResult & { perLanguage: LanguageResult[] };
+  caveats: Caveat[];
 }
 
 export async function writeReport(r: ReportInput): Promise<string> {
   const t = LABELS[r.lang];
+  const { query, perLanguage, ranking, resolution } = r.result;
   const doc = new PDFDocument({ size: "A4", margins: { top: 36, bottom: 16, left: 36, right: 36 } });
   doc.registerFont("R", join(FONT_DIR, "DejaVuSans.ttf"));
   doc.registerFont("B", join(FONT_DIR, "DejaVuSans-Bold.ttf"));
@@ -107,103 +39,107 @@ export async function writeReport(r: ReportInput): Promise<string> {
   const X = 36;
   const W = doc.page.width - 72;
   const FOOTER_Y = doc.page.height - 34;
+  const BOTTOM = FOOTER_Y - 6;
   let y = 36;
 
-  const label = r.resolution.map((x) => x.label ?? x.input).join(" + ") || r.perLanguage.flatMap((x) => x.articles).join(" + ");
+  // 1. Title and meta
+  const label = resolution.map((x) => x.label ?? x.input).join(" + ") || perLanguage.flatMap((x) => x.articles).join(" + ");
   const title = r.title ?? t.defaultTitle(label);
   doc.font("B").fontSize(16).fillColor(INK).text(title, X, y, { width: W });
   y = doc.y + 2;
-  doc.font("R").fontSize(8).fillColor(MUTED).text(t.meta(r.langs.join(", "), r.from, r.to, new Date().toISOString().slice(0, 10)), X, y, { width: W });
-  y = doc.y + 12;
+  doc.font("R").fontSize(8).fillColor(MUTED).text(t.meta(query.langs.join(", "), query.from, query.to, new Date().toISOString().slice(0, 10)), X, y, { width: W });
+  y = doc.y + 10;
 
-  // Table
-  y = heading(doc, t.table, X, y);
-  const widths = [28, 116, 58, 55, 58, 50, 36, 68, 54]; // sums to W = 523; long titles are truncated by fit()
-  const aligns = ["left", "left", "right", "right", "right", "right", "right", "center", "center"] as const;
-  doc.font("B").fontSize(7.8).fillColor(INK_2);
-  let cx = X;
-  t.cols.forEach((c, i) => {
-    doc.text(c, cx + 2, y, { width: widths[i]! - 4, align: aligns[i], lineBreak: false });
-    cx += widths[i]!;
-  });
-  y += 12;
-  doc.moveTo(X, y).lineTo(X + W, y).lineWidth(0.6).strokeColor(RULE).stroke();
-  y += 4;
-  // By rank; languages without a rank (no data) keep their --langs order at the end (the sort is stable)
-  const colors = langColors(r.perLanguage, r.langs);
-  const rankOf = new Map(r.ranking.map((x) => [x.lang, x.rank]));
-  const rows = [...r.perLanguage].sort((a, b) => (rankOf.get(a.lang) ?? Infinity) - (rankOf.get(b.lang) ?? Infinity));
-  for (const row of rows.slice(0, 12)) {
-    const cells =
-      row.status === "ok"
-        ? [
-            row.lang,
-            row.articles.join(" + "),
-            fmt(row.avgMonthlyViews),
-            row.metrics ? row.metrics.sharePerMillion.last12Avg.toFixed(1) : "—",
-            signed(row.metrics?.yoy?.sharePct ?? null),
-            signed(row.metrics?.trend?.sharePctPerYear ?? null),
-            pValue(row.metrics?.trend?.pValue ?? null),
-            row.metrics ? t.verdicts[row.metrics.verdict] : "—",
-            row.metrics ? t.levels[row.metrics.confidence.level] : "—",
-          ]
-        : [row.lang, row.articles.join(" + ") || "—", "—", "—", "—", "—", "—", row.status === "no_article" ? t.noArticle : t.noData, "—"];
-    cx = X;
-    cells.forEach((c, i) => {
-      doc.font(i === 0 ? "B" : "R").fontSize(8.5).fillColor(i === 0 ? (colors.get(row.lang) ?? MUTED) : INK);
-      doc.text(fit(doc, c, widths[i]! - 4), cx + 2, y, { width: widths[i]! - 4, align: aligns[i], lineBreak: false });
-      cx += widths[i]!;
-    });
-    y += 14;
-  }
-  if (r.ranking.length) {
-    const order = r.ranking.map((x) => `${x.lang} (${x.score.toFixed(2)})`).join(" > ");
-    const weights = WEIGHT_KEYS.map((k) => `${t.weightNames[k]}=${r.weights[k]}`).join(", ");
-    doc.font("R").fontSize(8).fillColor(INK_2).text(`${t.ranking}: ${order}; ${t.weights} ${weights}.`, X, y + 2, { width: W });
-    y = doc.y;
+  // 2. Key findings
+  const findings = buildFindings(r.result, r.lang).slice(0, MAX_FINDINGS);
+  y = heading(doc, t.findings, X, y);
+  doc.font("R").fontSize(8.8).fillColor(INK);
+  for (const f of findings) {
+    doc.text("•", X, y, { width: 10 });
+    doc.text(f, X + 10, y, { width: W - 10 });
+    y = doc.y + 1.5;
   }
   y += 8;
 
-  // Chart (svg-to-pdfkit sizes by the root width/height attributes, so keep only the viewBox)
-  if (r.chartSvg) {
+  // 3. Chart: its height adapts to the number of findings so everything fits on one page
+  const target = findings.length <= 4 ? 270 : findings.length <= 6 ? 235 : 200;
+  const chart = await chartForHeight(perLanguage, query.langs, t.yTitle, target, W);
+  if (chart) {
     y = heading(doc, t.chart, X, y);
-    const [sw, sh] = svgSize(r.chartSvg);
-    const svg = r.chartSvg.replace(/<svg([^>]*)>/, (_m, attrs: string) => {
-      let a = attrs.replace(/\s(width|height)="[^"]*"/g, "");
-      if (!/viewBox=/.test(a)) a += ` viewBox="0 0 ${sw} ${sh}"`;
-      return `<svg${a}>`;
+    SVGtoPDF(doc, chart.svg, X, y, { width: chart.w, height: chart.h, fontCallback: (_f: string, bold: boolean) => (bold ? "B" : "R") });
+    y += chart.h + 8;
+  }
+
+  // 4. Table by rank; languages without a rank (no data) keep their --langs order at the end (the sort is stable)
+  y = heading(doc, t.table, X, y);
+  const widths = [28, 111, 60, 54, 56, 50, 40, 68, 56]; // sums to W = 523; long titles are truncated by fit()
+  const aligns = ["left", "left", "right", "right", "right", "right", "right", "center", "center"] as const;
+  doc.font("B").fontSize(8).fillColor(INK_2);
+  const headerH = Math.max(...t.cols.map((c, i) => doc.heightOfString(c, { width: widths[i]! - 4 })));
+  let cx = X;
+  t.cols.forEach((c, i) => {
+    doc.text(c, cx + 2, y + headerH - doc.heightOfString(c, { width: widths[i]! - 4 }), { width: widths[i]! - 4, align: aligns[i] });
+    cx += widths[i]!;
+  });
+  y += headerH + 2;
+  doc.moveTo(X, y).lineTo(X + W, y).lineWidth(0.6).strokeColor(RULE).stroke();
+  y += 4;
+  const colors = langColors(perLanguage, query.langs);
+  const rankOf = new Map(ranking.map((x) => [x.lang, x.rank]));
+  const ordered = query.langs.flatMap((l) => perLanguage.find((x) => x.lang === l) ?? []);
+  const rows = ordered.sort((a, b) => (rankOf.get(a.lang) ?? Infinity) - (rankOf.get(b.lang) ?? Infinity));
+  for (const row of rows.slice(0, MAX_ROWS)) {
+    if (y + 12 > BOTTOM) break;
+    const m = row.metrics;
+    const cells = m
+      ? [
+          row.lang,
+          row.articles.join(" + "),
+          int(m.medianMonthlyViews),
+          m.sharePerMillion.last12Avg.toFixed(2),
+          dash(signed(m.yoy?.sharePct)),
+          dash(signed(m.trend?.sharePctPerYear)),
+          m.trend ? pfmt(m.trend.pValue).replace(/^p=?/, "") : "—",
+          t.verdicts[m.verdict],
+          t.levels[m.confidence.level],
+        ]
+      : [row.lang, row.articles.join(" + ") || "—", "—", "—", "—", "—", "—", row.status === "no_article" ? t.noArticle : t.noData, "—"];
+    cx = X;
+    cells.forEach((c, i) => {
+      doc.font(i === 0 ? "B" : "R").fontSize(8).fillColor(i === 0 ? (colors.get(row.lang) ?? MUTED) : INK);
+      doc.text(fit(doc, c, widths[i]! - 4), cx + 2, y, { width: widths[i]! - 4, align: aligns[i], lineBreak: false });
+      cx += widths[i]!;
     });
-    const h = Math.min(280, (W * sh) / sw);
-    SVGtoPDF(doc, svg, X, y, { width: (h * sw) / sh, height: h, fontCallback: (_f: string, bold: boolean) => (bold ? "B" : "R") });
-    y += h + 2;
-    if (r.perLanguage.some((x) => x.metrics?.spikes.length)) {
-      doc.font("R").fontSize(7.5).fillColor(MUTED).text(t.spikeCaption, X, y, { width: W });
-      y = doc.y;
-    }
-    y += 8;
+    y += 13;
   }
+  y += 8;
 
-  // Optional agent-written interpretation, clearly labelled
-  if (r.notes) {
-    const notes = r.notes.slice(0, 700);
+  // 5. Optional agent-written interpretation, clearly labelled; clipped to the space left
+  if (r.notes && y + 40 < BOTTOM) {
     y = heading(doc, t.notes, X, y);
-    doc.font("R").fontSize(8.8).fillColor(INK).text(notes, X, y, { width: W });
-    y = doc.y + 10;
+    doc.font("R").fontSize(8.8).fillColor(INK);
+    const room = BOTTOM - y;
+    const notes = r.notes.length > NOTES_MAX_CHARS ? `${r.notes.slice(0, NOTES_MAX_CHARS - 1).trimEnd()}…` : r.notes;
+    doc.text(notes, X, y, { width: W, height: room, ellipsis: true });
+    y = Math.min(doc.y, y + room) + 8;
   }
 
-  // Limitations: as many as fit on the page
-  y = heading(doc, t.caveats, X, y);
-  doc.font("R").fontSize(8).fillColor(INK_2);
-  const caveats = [...t.caveatList, t.redirectsCaveat(r.redirects), ...missingNotes(r)];
-  for (const c of caveats) {
-    if (y + doc.heightOfString(c, { width: W - 10 }) > FOOTER_Y - 6) break;
-    doc.text("•", X, y, { width: 10 });
-    doc.text(c, X + 10, y, { width: W - 10 });
-    y = doc.y + 2;
+  // 6. Assumptions & limitations: as many as fit above the footer
+  if (y + 30 < BOTTOM) {
+    y = heading(doc, t.caveats, X, y);
+    doc.font("R").fontSize(8).fillColor(INK_2);
+    for (const c of r.caveats.map((c) => renderCaveat(c, r.lang))) {
+      if (y + doc.heightOfString(c, { width: W - 10 }) > BOTTOM) break;
+      doc.text("•", X, y, { width: 10 });
+      doc.text(c, X + 10, y, { width: W - 10 });
+      y = doc.y + 2;
+    }
   }
 
+  // 7. Footer
+  const spikes = perLanguage.some((x) => x.metrics?.spikes.length);
   doc.moveTo(X, FOOTER_Y - 4).lineTo(X + W, FOOTER_Y - 4).lineWidth(0.5).strokeColor(RULE).stroke();
-  doc.font("R").fontSize(7).fillColor(MUTED).text(t.footer, X, FOOTER_Y, { width: W });
+  doc.font("R").fontSize(7).fillColor(MUTED).text(spikes ? `${t.footer} ${t.spikeFooter}` : t.footer, X, FOOTER_Y, { width: W, lineBreak: false });
 
   doc.end();
   await new Promise<void>((res, rej) => {
@@ -213,29 +149,35 @@ export async function writeReport(r: ReportInput): Promise<string> {
   return resolve(r.out);
 }
 
-function missingNotes(r: ReportInput): string[] {
-  return r.perLanguage
-    .filter((x) => x.missingTopics.length)
-    .map((x) => (r.lang === "uk" ? `${x.lang}: немає статті для «${x.missingTopics.join("», «")}».` : `${x.lang}: no article for "${x.missingTopics.join('", "')}".`));
+/**
+ * Renders the chart so that, scaled to width W, it is about `target` pt tall; returns it ready for svg-to-pdfkit
+ * (which sizes an SVG by its root width/height attributes, so only the viewBox is kept).
+ */
+async function chartForHeight(perLanguage: LanguageResult[], langs: string[], yTitle: string, target: number, W: number) {
+  const probe = await renderViewsChart(perLanguage, langs, yTitle);
+  if (!probe) return null;
+  const [pw, ph] = svgSize(probe);
+  // everything but the plot area (axes, legend, padding) keeps its size; grow or shrink only the plot
+  const plotHeight = Math.max(80, Math.round(DEFAULT_PLOT_HEIGHT + (target * pw) / W - ph));
+  const raw = (await renderViewsChart(perLanguage, langs, yTitle, plotHeight))!;
+  const [sw, sh] = svgSize(raw);
+  const svg = raw.replace(/<svg([^>]*)>/, (_m, attrs: string) => {
+    let a = attrs.replace(/\s(width|height)="[^"]*"/g, "");
+    if (!/viewBox=/.test(a)) a += ` viewBox="0 0 ${sw} ${sh}"`;
+    return `<svg${a}>`;
+  });
+  const h = Math.min(target, (W * sh) / sw);
+  return { svg, w: (h * sw) / sh, h };
+}
+
+/** "n/a" from the shared formatters reads as a dash in a table cell */
+function dash(s: string): string {
+  return s === "n/a" ? "—" : s;
 }
 
 function heading(doc: PDFKit.PDFDocument, text: string, x: number, y: number): number {
   doc.font("B").fontSize(10.5).fillColor(INK).text(text, x, y);
   return doc.y + 4;
-}
-
-function fmt(n: number): string {
-  return Math.round(n).toLocaleString("en-US");
-}
-
-function signed(x: number | null): string {
-  if (x === null) return "—";
-  return x > 0 ? `+${x.toFixed(1)}%` : `${x.toFixed(1)}%`;
-}
-
-function pValue(p: number | null): string {
-  if (p === null) return "—";
-  return p < 0.001 ? "<0.001" : p.toFixed(3);
 }
 
 function fit(doc: PDFKit.PDFDocument, s: string, width: number): string {

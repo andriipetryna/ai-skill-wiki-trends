@@ -19,8 +19,11 @@ export function langColors(perLanguage: LanguageResult[], langs: string[]): Map<
   return new Map(plotted.map((l, i) => [l, PALETTE[i % PALETTE.length]!]));
 }
 
-/** Line chart of monthly share per million pageviews of the edition, per language, with rings on spike months. Returns an SVG string. */
-export async function renderViewsChart(perLanguage: LanguageResult[], langs: string[], yTitle: string): Promise<string | null> {
+/**
+ * Line chart of monthly share per million pageviews of the edition, per language, with rings on spike months. Returns an SVG string.
+ * `plotHeight` is the height of the plot area in px (the report picks it to fit the page).
+ */
+export async function renderViewsChart(perLanguage: LanguageResult[], langs: string[], yTitle: string, plotHeight = 220): Promise<string | null> {
   const colors = langColors(perLanguage, langs);
   const ordered = [...colors.keys()];
   if (!ordered.length) return null;
@@ -29,7 +32,7 @@ export async function renderViewsChart(perLanguage: LanguageResult[], langs: str
   const spec: TopLevelSpec = {
     $schema: "https://vega.github.io/schema/vega-lite/v6.json",
     width: 500,
-    height: 220,
+    height: plotHeight,
     background: "#ffffff",
     padding: 4,
     config: {
@@ -46,7 +49,8 @@ export async function renderViewsChart(perLanguage: LanguageResult[], langs: str
     ],
     encoding: {
       x: { field: "month", type: "temporal", timeUnit: "yearmonth", title: null, axis: { format: "%b %Y", labelAngle: 0, tickCount: 6, grid: false } },
-      y: { field: "sharePerMillion", type: "quantitative", title: yTitle, axis: { gridColor: "#e6e5e1", tickCount: 5 } },
+      // two lines: a one-line title longer than the plot would stretch the SVG bounds above and below it
+      y: { field: "sharePerMillion", type: "quantitative", title: twoLines(yTitle), axis: { gridColor: "#e6e5e1", tickCount: 5 } },
       color: {
         field: "lang",
         type: "nominal",
@@ -59,6 +63,14 @@ export async function renderViewsChart(perLanguage: LanguageResult[], langs: str
   const svg = await view.toSVG();
   view.finalize();
   return svg;
+}
+
+/** Splits a title at the space nearest its middle. */
+function twoLines(s: string): string[] {
+  const mid = s.length / 2;
+  let at = -1;
+  for (let i = s.indexOf(" "); i >= 0; i = s.indexOf(" ", i + 1)) if (at < 0 || Math.abs(i - mid) < Math.abs(at - mid)) at = i;
+  return at < 0 ? [s] : [s.slice(0, at), s.slice(at + 1)];
 }
 
 /** Rasterises the chart SVG to a 2x PNG, which chat hosts and image viewers can display. */

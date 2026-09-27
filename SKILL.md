@@ -3,10 +3,10 @@ name: wiki-trends
 description: Fetch and compare Wikipedia pageviews for a topic across language editions (Wikimedia Pageviews API), with a chart and a one-page PDF report. Use when a user asks whether interest in a topic is growing, compares interest between languages, or wants a shareable report on topic interest from Wikipedia.
 compatibility: Requires Node.js >= 22.18 and network access to wikimedia.org, wikipedia.org, wikidata.org and the npm registry (first run only).
 metadata:
-  version: "0.11.0"
+  version: "0.12.0"
 ---
 
-# Wikipedia interest trends (MVP)
+# Wikipedia interest trends
 
 All data work is done by the bundled CLI. **Never** call Wikimedia APIs yourself and never write analysis code: run the CLI and read its JSON.
 
@@ -32,19 +32,22 @@ The first run installs dependencies automatically (`npm ci`, ~30 s). The command
 3. **If `ok` is false:**
    - `candidates` present: the topic is ambiguous. Show the candidates to the user, ask which one they mean, and rerun with `--topic "<exact title>"` or `--topic Q...`.
    - Anything else: report `error` and `hint` to the user.
-4. **If `ok` is true, answer from the JSON.**
-   - `metrics.yoy.sharePct` = change of the topic's share of edition traffic, last 12 months vs the previous 12, with one-off spikes excluded. `viewsPct` (raw views, spikes excluded) and `editionPct` (whole edition) explain differences: if the edition shrinks, raw views can fall while interest (share) grows.
-   - If `metrics.spikes` is non-empty, name the months: these are one-off events (news etc.) and are excluded from YoY and trend. `xBaseline` is how many times above the usual level that month was. If `yoy.sharePctWithSpikes` differs a lot from `yoy.sharePct`, say that the apparent change was driven by spikes. The chart marks spike months with rings.
-   - `metrics.trend.sharePctPerYear` is the robust growth rate of the topic's share per year over the whole period (spikes excluded); `pValue` < 0.05 means the trend is unlikely to be noise. Quote p < 0.001 as "p<0.001". `viewsPctPerYear` and `editionPctPerYear` give the same context as in YoY. YoY compares only the last two years; the trend uses every month, so when they disagree, say both. `test: "mann_kendall"` means the range is under 2 years, so seasonality is not controlled. `trend` is null only when there are fewer than 2 months.
-   - `metrics.verdict` is the one-word answer for the trend (`growing` / `declining` / `flat` / `inconclusive`). Use the verdict words as they are; never upgrade `inconclusive` to "growing" (or "declining").
-   - `metrics.confidence` answers "can we trust this?": `level` (`high` / `medium` / `low`) and `reasons` (each starts with `+` or `-`). Explain the level with its reasons, e.g. "confidence is medium: a large part of the apparent change comes from one-off spikes". For `low`, say clearly that the data does not support a conclusion.
-   - If `yoy.method` is `second_half_vs_first_half`, say the period is shorter than 2 years, so seasonality is not controlled.
-   - `metrics.yoy` is null when there is nothing to compare with (e.g. the article is new and the previous period has no views): say so, don't guess a change.
-   - `avgMonthlyViews`, `totalViews` and `periods` (12-month totals) show volume.
-   - `ranking` (top level) answers "which language should we research next?": languages in suggested order with `rank`, `score` (0–1) and `components` (`volume`, `growth`, `confidence`, `share`, each 0–1 relative to the other languages of this run). The weights used are in `query.weights`. `ranking` is `[]` when fewer than 2 languages have data.
-   - `metrics.sharePerMillion` is the article's share of its edition's traffic: `last12Avg` (mean of the last 12 months) and `median` (whole range), in views per million pageviews of that edition. The chart plots this share. `metrics` is null when there is no article or no data.
-   - `status: "no_article"`: Wikidata links no article in that language. If `suggestions` are present, show them to the user (they may be a broader or differently named article) and offer to rerun with `--article <lang>="<title>"`. Never pick one silently.
-   - If `resolution[].matchedBy` is `"search"`, tell the user which article was used and list the `alternatives`.
+4. **If `ok` is true, answer from the JSON.** Start from the three agent-facing fields; they are generated for this exact result:
+   - `answerChecklist`: what your reply must contain, item by item (see "Rules for the answer").
+   - `findings`: ready-made English sentences with all the key numbers (per language, relative interest, ranking, edition-wide traffic shifts). Paraphrase them in the user's language; don't change the numbers.
+   - `caveats`: data-dependent limitations, already rendered in English.
+
+   Field reference, for details or follow-up questions (per language in `perLanguage[]`; `metrics` is null for `no_article` / `no_data`):
+   - `metrics.trend.sharePctPerYear` (headline): robust growth per year of the topic's share of the edition's traffic over the whole range, spikes excluded; `pValue` from the (seasonal) Mann–Kendall test, quoted as "p<0.001" below 0.001. `viewsPctPerYear` (raw views) and `editionPctPerYear` (whole edition) explain differences. `test: "mann_kendall"` = under 2 years, seasonality not controlled.
+   - `metrics.yoy.sharePct`: last 12 months vs the previous 12 on the same share (`second_half_vs_first_half` if under 2 years); `sharePctWithSpikes`, `viewsPct`, `editionPct` for context; null = nothing to compare with (say so, don't guess).
+   - `metrics.verdict`: `growing` / `declining` / `flat` / `inconclusive`. `metrics.confidence`: `level` + `reasons` (`"+ …"` / `"- …"`).
+   - `metrics.spikes`: one-off months (`xBaseline` = times above the usual level), excluded from YoY and trend; rings on the chart.
+   - `metrics.sharePerMillion.last12Avg`: views per million pageviews of that edition (not per million people): the only fair cross-language level.
+   - `medianMonthlyViews`, `avgMonthlyViews`, `totalViews`, `periods`: volume within one language only.
+   - `status: "no_article"` + `suggestions`: Wikidata links no article; show the suggestions and offer `--article <lang>="<title>"`. Never pick one silently.
+   - `resolution[].matchedBy: "search"`: say which article was used and list `alternatives`.
+   - `ranking` (top level): suggested order to investigate, `score` 0–1 and `components` (`volume`, `growth`, `confidence`, `share`, each 0–1 relative to this run); weights in `query.weights`; `[]` with fewer than 2 languages with data. With two languages the scores are always 1 and 0: say which leads and why (components).
+   - How a number is computed (formulas, thresholds): read `references/methodology.md`, only when the user asks.
 5. **Always show the files (every run with `ok: true`).** The user can't see files unless you surface them:
    - **Open the chart image.** Read `files.chartPng` with your file/image-reading tool (e.g. `Read`). The image then appears in the conversation, and you can check your answer matches it. Never skip this step.
    - **Embed and link in your reply.** Put the chart right after the direct answer, and the links at the end. Use the absolute paths from `files`:
@@ -58,14 +61,17 @@ The first run installs dependencies automatically (`npm ci`, ~30 s). The command
 
 ## Rules for the answer
 
-- Every number you state must appear in the JSON. Copy it; never compute new numbers or ratios.
-- **Do not compare raw view counts between languages** ("Polish readers view it 2× more"): editions differ hugely in size. Compare `metrics.yoy.sharePct` (direction of change) instead.
-- For comparing languages use `metrics.sharePerMillion.last12Avg` (views per million pageviews of that edition, NOT per million people). Never compare raw views between languages.
-- For a trust question, answer with `metrics.confidence.level` and its `reasons` (not the p-value alone). Name every language whose confidence is `low`.
-- State direction with `metrics.verdict` words; never call an `inconclusive` language growing or declining.
-- `ranking` is relative to the compared languages and the weights only, never an absolute rating. When you use it, always state the weights from `query.weights` and offer to change them (e.g. "want me to weight growth higher?"). Explain the order with the `components` (e.g. "uk leads on growth and confidence, pl on volume"). With exactly two languages the scores are always 1 and 0: say which one leads and why (components), not the scores.
-- Always mention that pageviews show interest, not willingness to pay, plus one more item from `caveats`.
-- Keep it short: a direct answer first, then the chart, then per language, then caveats, then file links.
+**Work through `answerChecklist` from the output, item by item.** It is generated for this exact result. Also:
+
+- Every number you state must appear in the JSON. Copy it exactly; never recompute, estimate or compute ratios. `findings` has ready-made sentences — paraphrase them in the user's language.
+- The headline metric is `trend.sharePctPerYear` (growth of the topic's share of the edition's traffic). Mention `viewsPctPerYear` only when it differs in direction or a lot; `editionPctPerYear` explains why.
+- `verdict`: growing/declining = significant (p < 0.1) and beyond ±5%/yr; flat = within ±5%/yr; inconclusive = large but not reliable. Never upgrade "inconclusive".
+- Trust question → `confidence.level` + `reasons`. For `low`, say the data does not support a conclusion.
+- Never compare raw view counts between languages. Views per million = per million pageviews of the edition, not per million people.
+- If `spikes` is non-empty, name the months (one-off events, excluded from the trend).
+- `ranking` is relative to the compared languages and weights; state the weights, offer to change them.
+- Include at least two `caveats`, one of them: pageviews show interest, not willingness to pay.
+- Keep it short: direct answer → per language → caveats → one next step.
 
 ## Follow-up requests
 
@@ -77,5 +83,6 @@ Change the flags and rerun `analyze` (and show the new chart/PDF again, as in st
 |---|---|
 | Compare growth of interest in intermittent fasting in pl vs cs Wikipedia over two years | `scripts/wt analyze --topic "Intermittent fasting" --langs pl,cs --years 2` |
 | Is interest in astronomy growing in Ukrainian Wikipedia? | `scripts/wt analyze --topic "Astronomy" --langs uk --years 3` |
-| Compare interest in learning English in our editions + short report | `scripts/wt analyze --topic "English language" --topic "English as a second or foreign language" --langs pl,cs,uk,de --report --report-lang uk` |
+| Compare interest in learning English in our editions + short report | `scripts/wt analyze --topic "English language" --topic "English as a second or foreign language" --langs pl,cs,uk,de,hu,ro --report --report-lang uk` |
+| (after "pl: no article … Closest: «Głodówka lecznicza»") Use Głodówka lecznicza for Polish | `scripts/wt analyze --topic "Intermittent fasting" --langs pl,cs --years 2 --article pl="Głodówka lecznicza"` |
 | Which audiences should we research next for astronomy? Growth matters most to us | `scripts/wt analyze --topic "Astronomy" --langs uk,pl,cs,de,hu --weights growth=3` |
