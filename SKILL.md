@@ -3,7 +3,7 @@ name: wiki-trends
 description: Fetch and compare Wikipedia pageviews for a topic across language editions (Wikimedia Pageviews API), with a chart and a one-page PDF report. Use when a user asks whether interest in a topic is growing, compares interest between languages, or wants a shareable report on topic interest from Wikipedia.
 compatibility: Requires Node.js >= 22.18 and network access to wikimedia.org, wikipedia.org, wikidata.org and the npm registry (first run only).
 metadata:
-  version: "0.10.0"
+  version: "0.11.0"
 ---
 
 # Wikipedia interest trends (MVP)
@@ -25,6 +25,7 @@ The first run installs dependencies automatically (`npm ci`, ~30 s). The command
    - `--langs`: Wikipedia language codes, comma-separated (uk, pl, cs, de, fr, es, it, pt, ro, hu, tr, en …). Ukrainian is `uk`, not `ua`.
    - `--article pl="Tytuł"` (repeatable): use this exact article for that language instead of the Wikidata link, e.g. after the user picked one of `suggestions`.
    - `--no-redirects` excludes views of alternative titles (rarely needed).
+   - `--weights` sets what the language `ranking` values (defaults `volume=1,growth=1,confidence=1,share=0`; give only the keys you change). User says growth / momentum matters most → `--weights growth=3`; audience size → `--weights volume=3`; audiences where the topic takes a larger share of attention → `--weights share=1`.
    - Period: `--years N` (default 3), `--months N`, or `--from YYYY-MM --to YYYY-MM`. Only complete months are used.
    - Report: add `--report --report-lang uk` (or `en`, matching the user's language) when the user wants something to share. Optional `--title "..."` and `--notes "..."` (at most 3 sentences of your interpretation, with no new numbers).
 2. **Run `scripts/wt analyze ...`** as a single command.
@@ -40,6 +41,7 @@ The first run installs dependencies automatically (`npm ci`, ~30 s). The command
    - If `yoy.method` is `second_half_vs_first_half`, say the period is shorter than 2 years, so seasonality is not controlled.
    - `metrics.yoy` is null when there is nothing to compare with (e.g. the article is new and the previous period has no views): say so, don't guess a change.
    - `avgMonthlyViews`, `totalViews` and `periods` (12-month totals) show volume.
+   - `ranking` (top level) answers "which language should we research next?": languages in suggested order with `rank`, `score` (0–1) and `components` (`volume`, `growth`, `confidence`, `share`, each 0–1 relative to the other languages of this run). The weights used are in `query.weights`. `ranking` is `[]` when fewer than 2 languages have data.
    - `metrics.sharePerMillion` is the article's share of its edition's traffic: `last12Avg` (mean of the last 12 months) and `median` (whole range), in views per million pageviews of that edition. The chart plots this share. `metrics` is null when there is no article or no data.
    - `status: "no_article"`: Wikidata links no article in that language. If `suggestions` are present, show them to the user (they may be a broader or differently named article) and offer to rerun with `--article <lang>="<title>"`. Never pick one silently.
    - If `resolution[].matchedBy` is `"search"`, tell the user which article was used and list the `alternatives`.
@@ -61,12 +63,13 @@ The first run installs dependencies automatically (`npm ci`, ~30 s). The command
 - For comparing languages use `metrics.sharePerMillion.last12Avg` (views per million pageviews of that edition, NOT per million people). Never compare raw views between languages.
 - For a trust question, answer with `metrics.confidence.level` and its `reasons` (not the p-value alone). Name every language whose confidence is `low`.
 - State direction with `metrics.verdict` words; never call an `inconclusive` language growing or declining.
+- `ranking` is relative to the compared languages and the weights only, never an absolute rating. When you use it, always state the weights from `query.weights` and offer to change them (e.g. "want me to weight growth higher?"). Explain the order with the `components` (e.g. "uk leads on growth and confidence, pl on volume"). With exactly two languages the scores are always 1 and 0: say which one leads and why (components), not the scores.
 - Always mention that pageviews show interest, not willingness to pay, plus one more item from `caveats`.
 - Keep it short: a direct answer first, then the chart, then per language, then caveats, then file links.
 
 ## Follow-up requests
 
-Change the flags and rerun `analyze` (and show the new chart/PDF again, as in step 5) ("for 5 years" → `--years 5`; "add Hungarian" → add `hu`; "report in English" → `--report --report-lang en`).
+Change the flags and rerun `analyze` (and show the new chart/PDF again, as in step 5) ("for 5 years" → `--years 5`; "add Hungarian" → add `hu`; "report in English" → `--report --report-lang en`; "growth matters most to us" → `--weights growth=3`).
 
 ## Examples
 
@@ -75,3 +78,4 @@ Change the flags and rerun `analyze` (and show the new chart/PDF again, as in st
 | Compare growth of interest in intermittent fasting in pl vs cs Wikipedia over two years | `scripts/wt analyze --topic "Intermittent fasting" --langs pl,cs --years 2` |
 | Is interest in astronomy growing in Ukrainian Wikipedia? | `scripts/wt analyze --topic "Astronomy" --langs uk --years 3` |
 | Compare interest in learning English in our editions + short report | `scripts/wt analyze --topic "English language" --topic "English as a second or foreign language" --langs pl,cs,uk,de --report --report-lang uk` |
+| Which audiences should we research next for astronomy? Growth matters most to us | `scripts/wt analyze --topic "Astronomy" --langs uk,pl,cs,de,hu --weights growth=3` |

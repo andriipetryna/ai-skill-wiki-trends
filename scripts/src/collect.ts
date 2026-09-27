@@ -2,9 +2,10 @@
 import { articleMonthly, editionMonthly, redirects } from "./client.ts";
 import { monthRange, type Month } from "./dates.ts";
 import { computeLanguageMetrics, type LanguageMetrics, type MetricPoint } from "./metrics/index.ts";
+import { DEFAULT_WEIGHTS, rankLanguages, type RankInput, type RankRow, type Weights } from "./metrics/ranking.ts";
 import { resolveTopic, searchEdition, type Candidate, type Resolution } from "./resolve.ts";
 
-export const VERSION = "0.10.0";
+export const VERSION = "0.11.0";
 
 export interface CollectParams {
   topics: string[];
@@ -16,6 +17,8 @@ export interface CollectParams {
   to: Month;
   /** add views of redirects (old / alternative titles) to each article; default true */
   redirects?: boolean;
+  /** weights for the language ranking; default DEFAULT_WEIGHTS */
+  weights?: Weights;
 }
 
 export interface Period {
@@ -50,11 +53,13 @@ export class ResolveError extends Error {
   }
 }
 
-export async function collect(p: CollectParams): Promise<{ resolution: Resolution[]; perLanguage: LanguageResult[] }> {
+export async function collect(p: CollectParams): Promise<{ resolution: Resolution[]; perLanguage: LanguageResult[]; ranking: RankRow[] }> {
   const months = monthRange(p.from, p.to);
   const resolution = p.topics.length ? await Promise.all(p.topics.map((t) => resolveTopic(t, p.fromLang, p.langs))) : [];
   for (const r of resolution) if (r.status !== "ok") throw new ResolveError(r);
 
+  // full-precision ranking inputs of the languages that have metrics, kept out of the output
+  const rankInputs = new Map<string, RankInput>();
   const perLanguage = await Promise.all(
     p.langs.map(async (lang): Promise<LanguageResult> => {
       const manual = p.articles[lang];
@@ -105,7 +110,8 @@ export async function collect(p: CollectParams): Promise<{ resolution: Resolutio
 
       const total = views.reduce((a, b) => a + b, 0);
       const periods = splitPeriods(months, views);
-      const { metrics, points } = computeLanguageMetrics(months, views, months.map((m) => edition.get(m) ?? 0));
+      const { metrics, points, rankInput } = computeLanguageMetrics(months, views, months.map((m) => edition.get(m) ?? 0));
+      rankInputs.set(lang, { lang, ...rankInput });
       return {
         ...empty,
         status: "ok",
@@ -118,7 +124,10 @@ export async function collect(p: CollectParams): Promise<{ resolution: Resolutio
       };
     }),
   );
-  return { resolution, perLanguage };
+  // Ranking is relative to the compared languages: meaningless with fewer than two. Inputs in --langs order.
+  const ranked = p.langs.flatMap((l) => rankInputs.get(l) ?? []);
+  const ranking = ranked.length >= 2 ? rankLanguages(ranked, p.weights ?? DEFAULT_WEIGHTS) : [];
+  return { resolution, perLanguage, ranking };
 }
 
 function splitPeriods(months: Month[], views: number[]): Period[] {

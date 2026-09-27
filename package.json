@@ -1,6 +1,6 @@
 {
   "name": "wiki-trends",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "private": true,
   "description": "Agent Skill (MVP): Wikipedia pageviews for a topic across languages, chart and one-page PDF",
   "type": "module",

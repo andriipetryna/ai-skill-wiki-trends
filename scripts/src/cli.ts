@@ -6,18 +6,21 @@ import { renderViewsChart, svgToPng } from "./charts.ts";
 import { ApiError } from "./client.ts";
 import { collect, ResolveError, VERSION } from "./collect.ts";
 import { addMonths, FIRST_AVAILABLE_MONTH, lastCompleteMonth } from "./dates.ts";
+import { DEFAULT_WEIGHTS, WEIGHT_KEYS, type Weights } from "./metrics/ranking.ts";
 import { LABELS, writeReport, type UiLang } from "./report.ts";
 import { resolveTopic } from "./resolve.ts";
 
 const SKILL_ROOT = resolve(import.meta.dirname, "../..");
 const LANG_RE = /^[a-z]{2,3}(-[a-z]+)*$/;
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+const WEIGHTS_HINT = `Use --weights key=number[,key=number...] with keys ${WEIGHT_KEYS.join(", ")} (non-negative numbers; missing keys default to ${WEIGHT_KEYS.map((k) => `${k}=${DEFAULT_WEIGHTS[k]}`).join(",")}).`;
 
 const HELP = `wiki-trends ${VERSION}
   resolve  --topic T [--topic T2] --langs pl,cs [--from-lang en]
   analyze  --topic T [--topic T2 ...] --langs pl,cs [--from-lang en]
            [--years 2 | --months 18 | --from YYYY-MM --to YYYY-MM] [--article pl="Tytuł"]
            [--no-redirects]  exclude views of redirects (old/alternative titles; included by default)
+           [--weights volume=1,growth=1,confidence=1,share=0]  ranking weights; any subset, the rest keep these defaults
            [--report] [--report-lang uk|en] [--title "..."] [--notes "..."] [--out file.pdf]
            [--out-dir DIR]   write files to DIR/wiki-trends-<timestamp>/ (default: <skill>/output/<timestamp>/)
 Topic = English Wikipedia title (or title in --from-lang) or a Wikidata QID.\n--article lang=Title uses that article in that language instead of the Wikidata link.`;
@@ -47,6 +50,7 @@ async function main(argv: string[]): Promise<{ code: number; output: Output }> {
         out: { type: "string" },
         "out-dir": { type: "string" },
         redirects: { type: "boolean", default: true },
+        weights: { type: "string" },
         help: { type: "boolean", short: "h" },
       },
     });
@@ -70,6 +74,8 @@ async function main(argv: string[]): Promise<{ code: number; output: Output }> {
   if (!langs.length) return fail(2, "--langs is required, e.g. --langs pl,cs");
   const badLang = [...langs, fromLang].find((l) => !LANG_RE.test(l));
   if (badLang) return fail(2, `Invalid language code "${badLang}"`, "Use Wikipedia codes like uk, pl, cs (Ukrainian is 'uk', not 'ua').");
+  const weights = parseWeights(v.weights);
+  if (typeof weights === "string") return fail(2, weights, WEIGHTS_HINT);
 
   try {
     if (cmd === "resolve") {
@@ -90,14 +96,14 @@ async function main(argv: string[]): Promise<{ code: number; output: Output }> {
     if (from < FIRST_AVAILABLE_MONTH) from = FIRST_AVAILABLE_MONTH;
 
     const redirects = v.redirects;
-    const data = await collect({ topics, langs, fromLang, articles, from, to, redirects });
+    const data = await collect({ topics, langs, fromLang, articles, from, to, redirects, weights });
     const uiLang: UiLang = v["report-lang"] === "uk" ? "uk" : "en";
 
     // Output files: data.json (incl. monthly series), chart.svg + chart.png, optional report PDF
     const stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
     const outDir = v["out-dir"] ? join(resolve(process.cwd(), v["out-dir"]), `wiki-trends-${stamp}`) : join(SKILL_ROOT, "output", stamp);
     mkdirSync(outDir, { recursive: true });
-    writeFileSync(join(outDir, "data.json"), JSON.stringify({ version: VERSION, query: { topics, langs, fromLang, from, to, redirects }, ...data }, null, 1));
+    writeFileSync(join(outDir, "data.json"), JSON.stringify({ version: VERSION, query: { topics, langs, fromLang, from, to, redirects, weights }, ...data }, null, 1));
     const chartSvg = await renderViewsChart(data.perLanguage, langs, LABELS[uiLang].yTitle);
     const chartPath = chartSvg ? join(outDir, "chart.svg") : null;
     const chartPngPath = chartSvg ? join(outDir, "chart.png") : null;
@@ -114,6 +120,8 @@ async function main(argv: string[]): Promise<{ code: number; output: Output }> {
         chartSvg,
         resolution: data.resolution,
         perLanguage: data.perLanguage,
+        ranking: data.ranking,
+        weights,
         langs,
         from,
         to,
@@ -127,10 +135,11 @@ async function main(argv: string[]): Promise<{ code: number; output: Output }> {
       code: 0,
       output: {
         ok: true,
-        query: { topics, articles, langs, fromLang, from, to, redirects },
+        query: { topics, articles, langs, fromLang, from, to, redirects, weights },
         resolution: data.resolution,
         // monthly series stays in data.json to keep the agent's context small
         perLanguage: data.perLanguage.map(({ monthly: _m, ...rest }) => rest),
+        ranking: data.ranking,
         caveats: [...LABELS.en.caveatList, LABELS.en.redirectsCaveat(redirects)],
         files: { data: join(outDir, "data.json"), chart: chartPath, chartPng: chartPngPath, report: reportPath },
       },
@@ -153,6 +162,21 @@ async function main(argv: string[]): Promise<{ code: number; output: Output }> {
     }
     return fail(1, (e as Error).message);
   }
+}
+
+/** "growth=2,share=1" → full weights (missing keys from DEFAULT_WEIGHTS), or an error message. */
+function parseWeights(spec: string | undefined): Weights | string {
+  const w: Weights = { ...DEFAULT_WEIGHTS };
+  for (const part of (spec ?? "").split(",").map((x) => x.trim()).filter(Boolean)) {
+    const i = part.indexOf("=");
+    const key = (i < 0 ? part : part.slice(0, i)).trim();
+    const raw = i < 0 ? "" : part.slice(i + 1).trim();
+    if (!(WEIGHT_KEYS as string[]).includes(key)) return `Unknown weight "${key}" in --weights`;
+    const x = raw === "" ? NaN : Number(raw);
+    if (!Number.isFinite(x) || x < 0) return `Weight ${key} must be a non-negative number, got "${raw}"`;
+    w[key as keyof Weights] = x;
+  }
+  return w;
 }
 
 function fail(code: number, error: string, hint?: string): { code: number; output: Output } {

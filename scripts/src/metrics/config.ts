@@ -50,4 +50,14 @@ export const CONFIG = {
     /** score thresholds for the levels */
     levels: { high: 0.7, medium: 0.4 },
   },
+  ranking: {
+    /** growth (trend %/yr) is clamped to [growthMin, growthMax] so one extreme value does not flatten the rest */
+    growthMin: -100,
+    growthMax: 200,
+    /** floors before log10: median views/month and share per million */
+    volumeFloor: 1,
+    shareFloor: 1e-6,
+    /** max − min below this → the component is equal for everyone (0.5) */
+    minRange: 1e-12,
+  },
 } as const;

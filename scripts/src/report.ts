@@ -5,6 +5,7 @@ import PDFDocument from "pdfkit";
 import SVGtoPDF from "svg-to-pdfkit";
 import { FONT_DIR, PALETTE } from "./charts.ts";
 import type { LanguageResult } from "./collect.ts";
+import { WEIGHT_KEYS, type RankRow, type Weights } from "./metrics/ranking.ts";
 import type { Resolution } from "./resolve.ts";
 
 export type UiLang = "en" | "uk";
@@ -23,6 +24,9 @@ export const LABELS = {
     cols: ["Lang", "Article", "Avg / month", "Per million", "YoY share", "Trend/yr", "p", "Verdict", "Confidence"],
     verdicts: { growing: "growing", declining: "declining", flat: "flat", inconclusive: "inconclusive" },
     levels: { high: "high", medium: "medium", low: "low" },
+    ranking: "Suggested order to investigate",
+    weights: "weights",
+    weightNames: { volume: "volume", growth: "growth", confidence: "confidence", share: "share" },
     meta: (langs: string, from: string, to: string, date: string) => `Wikipedia pageviews · ${langs} · ${from} – ${to} · generated ${date}`,
     defaultTitle: (t: string) => `Interest in “${t}” on Wikipedia`,
     noArticle: "no article",
@@ -50,6 +54,9 @@ export const LABELS = {
     cols: ["Мова", "Стаття", "Сер. / міс", "На мільйон", "Рік-до-року", "Тренд/рік", "p", "Висновок", "Довіра"],
     verdicts: { growing: "зростає", declining: "спадає", flat: "стабільний", inconclusive: "неоднозначно" },
     levels: { high: "висока", medium: "середня", low: "низька" },
+    ranking: "Порядок для подальшого дослідження",
+    weights: "ваги",
+    weightNames: { volume: "обсяг", growth: "зростання", confidence: "довіра", share: "частка" },
     meta: (langs: string, from: string, to: string, date: string) => `Перегляди Wikipedia · ${langs} · ${from} – ${to} · створено ${date}`,
     defaultTitle: (t: string) => `Інтерес до «${t}» у Wikipedia`,
     noArticle: "немає статті",
@@ -79,6 +86,9 @@ export interface ReportInput {
   chartSvg: string | null;
   resolution: Resolution[];
   perLanguage: LanguageResult[];
+  /** empty when fewer than two languages have data */
+  ranking: RankRow[];
+  weights: Weights;
   langs: string[];
   from: string;
   to: string;
@@ -119,7 +129,10 @@ export async function writeReport(r: ReportInput): Promise<string> {
   y += 12;
   doc.moveTo(X, y).lineTo(X + W, y).lineWidth(0.6).strokeColor(RULE).stroke();
   y += 4;
-  for (const row of r.perLanguage.slice(0, 12)) {
+  // By rank; languages without a rank (no data) keep their --langs order at the end (the sort is stable)
+  const rankOf = new Map(r.ranking.map((x) => [x.lang, x.rank]));
+  const rows = [...r.perLanguage].sort((a, b) => (rankOf.get(a.lang) ?? Infinity) - (rankOf.get(b.lang) ?? Infinity));
+  for (const row of rows.slice(0, 12)) {
     const cells =
       row.status === "ok"
         ? [
@@ -141,6 +154,12 @@ export async function writeReport(r: ReportInput): Promise<string> {
       cx += widths[i]!;
     });
     y += 14;
+  }
+  if (r.ranking.length) {
+    const order = r.ranking.map((x) => `${x.lang} (${x.score.toFixed(2)})`).join(" > ");
+    const weights = WEIGHT_KEYS.map((k) => `${t.weightNames[k]}=${r.weights[k]}`).join(", ");
+    doc.font("R").fontSize(8).fillColor(INK_2).text(`${t.ranking}: ${order}; ${t.weights} ${weights}.`, X, y + 2, { width: W });
+    y = doc.y;
   }
   y += 8;
 

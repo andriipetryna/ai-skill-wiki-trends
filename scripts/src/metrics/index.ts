@@ -3,6 +3,7 @@ import { monthOfYear, type Month } from "../dates.ts";
 import { assessConfidence, verdictFor, type ConfidenceLevel, type Verdict } from "./confidence.ts";
 import { CONFIG } from "./config.ts";
 import { sharePerMillion } from "./normalize.ts";
+import type { RankInput } from "./ranking.ts";
 import { detectSpikes } from "./spikes.ts";
 import { mean, median, round } from "./stats.ts";
 import { monthlyTrend, type TrendResult } from "./trend.ts";
@@ -58,8 +59,15 @@ export interface MetricPoint {
   spike: boolean;
 }
 
-/** `months`, `views` and `edition` are aligned series of equal length. */
-export function computeLanguageMetrics(months: Month[], views: number[], edition: number[]): { metrics: LanguageMetrics; points: MetricPoint[] } {
+/**
+ * `months`, `views` and `edition` are aligned series of equal length.
+ * `rankInput` carries the full-precision values that `rankLanguages` needs (not part of the JSON output).
+ */
+export function computeLanguageMetrics(
+  months: Month[],
+  views: number[],
+  edition: number[],
+): { metrics: LanguageMetrics; points: MetricPoint[]; rankInput: Omit<RankInput, "lang"> } {
   // Spikes are events in the article itself, so they are found on raw views, before normalisation
   const { spikes, cleaned } = detectSpikes(views);
   const share = sharePerMillion(views, edition);
@@ -116,5 +124,11 @@ export function computeLanguageMetrics(months: Month[], views: number[], edition
     sharePerMillion: round(share[i]!, 3),
     spike: spikeAt.has(i),
   }));
-  return { metrics, points };
+  const rankInput = {
+    medianMonthlyViews: median(views),
+    trendPctPerYear: trend.pctPerYear,
+    confidenceScore: confidence.score,
+    sharePerMillion: mean(share.slice(-12)),
+  };
+  return { metrics, points, rankInput };
 }

@@ -43,7 +43,7 @@ The results of each run are saved in `output/<timestamp>/` (or `<DIR>/wiki-trend
 | Command | What it does |
 |---|---|
 | `resolve --topic T --langs pl,cs` | shows which articles match the topic in each language |
-| `analyze --topic T [--topic T2] --langs pl,cs [--years N \| --months N \| --from YYYY-MM --to YYYY-MM] [--article pl="Tytuł"] [--no-redirects] [--report --report-lang uk --title ... --notes ...] [--out-dir DIR]` | data, chart (SVG+PNG), optional PDF |
+| `analyze --topic T [--topic T2] --langs pl,cs [--years N \| --months N \| --from YYYY-MM --to YYYY-MM] [--article pl="Tytuł"] [--no-redirects] [--weights growth=3] [--report --report-lang uk --title ... --notes ...] [--out-dir DIR]` | data, chart (SVG+PNG), optional PDF |
 
 What `analyze` returns for each language:
 - `totalViews` and `avgMonthlyViews` — view volume, including views of the article's redirects (old / alternative titles, up to 25 per article; `--no-redirects` turns this off);
@@ -57,14 +57,14 @@ What `analyze` returns for each language:
 - `metrics.sharePerMillion` — views per million pageviews of the whole language edition (`median`, `last12Avg`); this is what makes languages comparable and removes edition-wide traffic shifts. The chart plots this share;
 - `status: "no_article"` + `suggestions` — Wikidata has no article in this language, so the CLI searches for candidates in the edition itself; the chosen article can be passed via `--article pl="…"`.
 
+Across languages, `analyze` also returns `ranking` — a suggested order in which to investigate the languages (only when at least 2 have data, otherwise `[]`). Each language gets four components, min-max normalised to 0–1 across the languages of the run (0.5 for everyone when a component does not vary): `volume` (log10 of median monthly views), `growth` (`trend.sharePctPerYear`, clamped to −100…200), `confidence` (`confidence.score`) and `share` (log10 of `sharePerMillion.last12Avg`). `score` is their weighted mean; the weights are set with `--weights volume=1,growth=1,confidence=1,share=0` (these are the defaults; any subset can be given) and echoed in `query.weights`. The ranking is relative: it only compares the languages of this run, under these weights. The PDF table is sorted by rank, with a "Suggested order to investigate" line under it.
+
 Verified against real API responses: for "Intermittent fasting" (Q1666254) Wikidata has no Polish article; the closest is the broader "Głodówka lecznicza". So the first example from the task requires a decision from the user.
 
 ## Deliberately out of scope for the MVP (next steps)
 
-1. **Metrics:**
-   - ranking languages by user-defined weights.
-2. **Caching.** Past months never change, so they can be cached forever; this will speed up follow-up queries.
-3. **Tests and evals:**
+1. **Caching.** Past months never change, so they can be cached forever; this will speed up follow-up queries.
+2. **Tests and evals:**
    - unit tests on synthetic data with a known answer;
    - e2e tests against a fake API;
    - agent runs on a cheap model, checking that every number in the answer is present in the JSON.
