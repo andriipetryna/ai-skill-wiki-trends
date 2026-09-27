@@ -25,11 +25,12 @@ wiki-trends/
     └── src/
         ├── cli.ts        # resolve | analyze → a single JSON object on stdout
         ├── resolve.ts    # topic → Wikidata QID → article title in each language
-        ├── client.ts     # Wikimedia REST, MediaWiki API, Wikidata; retry on 429/5xx
-        ├── collect.ts    # monthly views, a "basket" of several topics, 12-month periods and % change
+        ├── client.ts     # Wikimedia REST (per-article + edition aggregate), MediaWiki API, Wikidata; retry on 429/5xx
+        ├── collect.ts    # monthly views + edition traffic, a "basket" of several topics, 12-month periods and % change
         ├── dates.ts      # month handling
-        ├── charts.ts     # Vega-Lite → SVG, resvg → PNG
-        └── report.ts     # pdfkit → one-page PDF (en/uk, Cyrillic via DejaVu)
+        ├── charts.ts     # Vega-Lite → SVG (share per million), resvg → PNG
+        ├── report.ts     # pdfkit → one-page PDF (en/uk, Cyrillic via DejaVu)
+        └── metrics/      # pure metric functions: stats helpers, normalisation; index.ts applies them in order
 ```
 
 The results of each run are saved in `output/<timestamp>/` (or `<DIR>/wiki-trends-<timestamp>/` with `--out-dir DIR`):
@@ -48,6 +49,7 @@ What `analyze` returns for each language:
 - `totalViews` and `avgMonthlyViews` — view volume;
 - `periods` — totals for consecutive 12-month blocks ending at the last complete month;
 - `changePct` — change of the last block relative to the previous one;
+- `metrics.sharePerMillion` — views per million pageviews of the whole language edition (`median`, `last12Avg`); this is what makes languages comparable and removes edition-wide traffic shifts. The chart plots this share;
 - `status: "no_article"` + `suggestions` — Wikidata has no article in this language, so the CLI searches for candidates in the edition itself; the chosen article can be passed via `--article pl="…"`.
 
 Verified against real API responses: for "Intermittent fasting" (Q1666254) Wikidata has no Polish article; the closest is the broader "Głodówka lecznicza". So the first example from the task requires a decision from the user.
@@ -55,7 +57,6 @@ Verified against real API responses: for "Intermittent fasting" (Q1666254) Wikid
 ## Deliberately out of scope for the MVP (next steps)
 
 1. **Metrics:**
-   - normalization against the language edition's total traffic;
    - seasonal trend and significance (seasonal Sen / Mann–Kendall);
    - detection of one-off spikes;
    - confidence score with explanations;

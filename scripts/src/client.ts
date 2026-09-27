@@ -53,17 +53,32 @@ async function getJson<T>(url: string): Promise<T | null> {
   }
 }
 
-/** Monthly user pageviews of one article, zero-filled for months the API omits. Null = no data. */
-export async function articleMonthly(lang: string, title: string, from: Month, to: Month): Promise<Map<Month, number> | null> {
-  const url = `${REST}/per-article/${lang}.wikipedia/all-access/user/${encodeTitle(title)}/monthly/${apiStart(from)}/${apiEnd(to)}`;
-  const data = await getJson<{ items: Array<{ timestamp: string; views: number }> }>(url);
-  if (data === null) return null;
+type ViewItems = { items: Array<{ timestamp: string; views: number }> };
+
+/** Every month of from..to, zero-filled for months the API omits. */
+function fillMonths(items: ViewItems["items"], from: Month, to: Month): Map<Month, number> {
   const out = new Map<Month, number>(monthRange(from, to).map((m) => [m, 0]));
-  for (const it of data.items) {
+  for (const it of items) {
     const m = monthFromTimestamp(it.timestamp);
     if (out.has(m)) out.set(m, out.get(m)! + it.views);
   }
   return out;
+}
+
+/** Monthly user pageviews of one article, zero-filled for months the API omits. Null = no data. */
+export async function articleMonthly(lang: string, title: string, from: Month, to: Month): Promise<Map<Month, number> | null> {
+  const url = `${REST}/per-article/${lang}.wikipedia/all-access/user/${encodeTitle(title)}/monthly/${apiStart(from)}/${apiEnd(to)}`;
+  const data = await getJson<ViewItems>(url);
+  return data === null ? null : fillMonths(data.items, from, to);
+}
+
+/** Monthly user pageviews of a whole language edition (normalisation base), zero-filled. */
+export async function editionMonthly(lang: string, from: Month, to: Month): Promise<Map<Month, number>> {
+  const url = `${REST}/aggregate/${lang}.wikipedia/all-access/user/monthly/${apiStart(from)}/${apiEnd(to)}`;
+  const data = await getJson<ViewItems>(url);
+  // normalisation is impossible without the base
+  if (data === null) throw new ApiError(`No aggregate data for ${lang}.wikipedia`, 404, url);
+  return fillMonths(data.items, from, to);
 }
 
 /** MediaWiki Action API on a language edition. */

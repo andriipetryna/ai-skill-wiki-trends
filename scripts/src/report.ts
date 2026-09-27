@@ -17,39 +17,39 @@ const RULE = "#e6e5e1";
 export const LABELS = {
   en: {
     table: "By language",
-    chart: "Monthly views",
+    chart: "Monthly share of the edition's traffic",
     notes: "Interpretation (written by the AI agent)",
     caveats: "Limitations",
-    cols: ["Lang", "Article", "Total views", "Avg / month", "Last 12 mo", "Change"],
+    cols: ["Lang", "Article", "Total views", "Avg / month", "Per million", "Last 12 mo", "Change"],
     meta: (langs: string, from: string, to: string, date: string) => `Wikipedia pageviews · ${langs} · ${from} – ${to} · generated ${date}`,
     defaultTitle: (t: string) => `Interest in “${t}” on Wikipedia`,
     noArticle: "no article",
     noData: "no data",
-    yTitle: "Views per month",
+    yTitle: "Views per million pageviews of the edition",
     footer: "Data: Wikimedia Pageviews API (agent=user, all-access). Change = last period vs the previous one.",
     caveatList: [
       "Pageviews show curiosity, not willingness to pay: a signal for further validation.",
       "Raw views are not comparable across languages: editions differ greatly in size.",
-      "No normalisation, seasonality or significance checks yet (MVP); one-off news spikes are included.",
+      "Share = article views per million pageviews of the whole language edition (not per million people).",
       "A single article is a proxy for the topic.",
     ],
   },
   uk: {
     table: "За мовами",
-    chart: "Перегляди за місяць",
+    chart: "Частка в трафіку розділу за місяць",
     notes: "Інтерпретація (написав AI-агент)",
     caveats: "Обмеження",
-    cols: ["Мова", "Стаття", "Усього", "Сер. / міс", "Ост. 12 міс", "Зміна"],
+    cols: ["Мова", "Стаття", "Усього", "Сер. / міс", "На мільйон", "Ост. 12 міс", "Зміна"],
     meta: (langs: string, from: string, to: string, date: string) => `Перегляди Wikipedia · ${langs} · ${from} – ${to} · створено ${date}`,
     defaultTitle: (t: string) => `Інтерес до «${t}» у Wikipedia`,
     noArticle: "немає статті",
     noData: "немає даних",
-    yTitle: "Переглядів за місяць",
+    yTitle: "Переглядів на мільйон переглядів розділу",
     footer: "Дані: Wikimedia Pageviews API (agent=user, all-access). Зміна = останній період проти попереднього.",
     caveatList: [
       "Перегляди відображають цікавість, а не готовність платити: це сигнал для подальшої перевірки.",
       "Сирі перегляди не порівнюються між мовами: розділи дуже різні за розміром.",
-      "Поки без нормалізації, врахування сезонності та перевірки значущості (MVP); разові сплески новин включено.",
+      "Частка = переглядів статті на мільйон усіх переглядів мовного розділу (не на мільйон людей).",
       "Одна стаття — лише проксі теми.",
     ],
   },
@@ -90,8 +90,8 @@ export async function writeReport(r: ReportInput): Promise<string> {
 
   // Table
   y = heading(doc, t.table, X, y);
-  const widths = [36, 175, 78, 78, 78, 78];
-  const aligns = ["left", "left", "right", "right", "right", "right"] as const;
+  const widths = [36, 127, 72, 72, 72, 72, 72]; // sums to W = 523
+  const aligns = ["left", "left", "right", "right", "right", "right", "right"] as const;
   doc.font("B").fontSize(7.8).fillColor(INK_2);
   let cx = X;
   t.cols.forEach((c, i) => {
@@ -105,8 +105,16 @@ export async function writeReport(r: ReportInput): Promise<string> {
     const last = row.periods.at(-1);
     const cells =
       row.status === "ok"
-        ? [row.lang, row.articles.join(" + "), fmt(row.totalViews), fmt(row.avgMonthlyViews), last ? fmt(last.views) : "—", signed(row.changePct)]
-        : [row.lang, row.articles.join(" + ") || "—", "—", "—", "—", row.status === "no_article" ? t.noArticle : t.noData];
+        ? [
+            row.lang,
+            row.articles.join(" + "),
+            fmt(row.totalViews),
+            fmt(row.avgMonthlyViews),
+            row.metrics ? row.metrics.sharePerMillion.last12Avg.toFixed(1) : "—",
+            last ? fmt(last.views) : "—",
+            signed(row.changePct),
+          ]
+        : [row.lang, row.articles.join(" + ") || "—", "—", "—", "—", "—", row.status === "no_article" ? t.noArticle : t.noData];
     cx = X;
     cells.forEach((c, i) => {
       doc.font(i === 0 ? "B" : "R").fontSize(8.5).fillColor(i === 0 ? PALETTE[r.langs.indexOf(row.lang) % PALETTE.length]! : INK);

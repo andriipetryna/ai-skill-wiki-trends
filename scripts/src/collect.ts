@@ -1,10 +1,10 @@
-// Data pipeline: topics -> articles per language -> monthly views -> simple period totals.
-// Deliberately minimal (MVP): no normalisation, trend tests or confidence yet.
-import { articleMonthly } from "./client.ts";
+// Data pipeline: topics -> articles per language -> monthly views + edition traffic -> metrics.
+import { articleMonthly, editionMonthly } from "./client.ts";
 import { monthRange, type Month } from "./dates.ts";
+import { computeLanguageMetrics, type LanguageMetrics, type MetricPoint } from "./metrics/index.ts";
 import { resolveTopic, searchEdition, type Candidate, type Resolution } from "./resolve.ts";
 
-export const VERSION = "0.4.0";
+export const VERSION = "0.5.0";
 
 export interface CollectParams {
   topics: string[];
@@ -35,7 +35,9 @@ export interface LanguageResult {
   periods: Period[];
   /** % change of the last period vs the previous one */
   changePct: number | null;
-  monthly: Array<{ month: Month; views: number }>;
+  /** null for no_article / no_data */
+  metrics: LanguageMetrics | null;
+  monthly: MetricPoint[];
 }
 
 export class ResolveError extends Error {
@@ -68,12 +70,16 @@ export async function collect(p: CollectParams): Promise<{ resolution: Resolutio
         avgMonthlyViews: 0,
         periods: [],
         changePct: null,
+        metrics: null,
         monthly: [],
       };
       if (titles.length === 0) return { ...empty, status: "no_article" };
 
-      // Several topics = a basket: views are summed per month
-      const series = await Promise.all(titles.map((t) => articleMonthly(lang, t, p.from, p.to)));
+      // Several topics = a basket: views are summed per month. Edition traffic is the normalisation base.
+      const [edition, ...series] = await Promise.all([
+        editionMonthly(lang, p.from, p.to),
+        ...titles.map((t) => articleMonthly(lang, t, p.from, p.to)),
+      ]);
       const views = months.map((m) => series.reduce((acc, s) => acc + (s?.get(m) ?? 0), 0));
       if (views.every((v) => v === 0)) return { ...empty, status: "no_data" };
 
@@ -81,6 +87,7 @@ export async function collect(p: CollectParams): Promise<{ resolution: Resolutio
       const periods = splitPeriods(months, views);
       const last = periods.at(-1);
       const prev = periods.at(-2);
+      const { metrics, points } = computeLanguageMetrics(months, views, months.map((m) => edition.get(m) ?? 0));
       return {
         ...empty,
         status: "ok",
@@ -88,7 +95,8 @@ export async function collect(p: CollectParams): Promise<{ resolution: Resolutio
         avgMonthlyViews: Math.round(total / months.length),
         periods,
         changePct: last && prev && prev.views > 0 ? Math.round((last.views / prev.views - 1) * 1000) / 10 : null,
-        monthly: months.map((m, i) => ({ month: m, views: views[i]! })),
+        metrics,
+        monthly: points,
       };
     }),
   );

@@ -29,9 +29,11 @@ Pipeline lives in `scripts/src/`, entry point `cli.ts`. Data flows one direction
 ```
 cli.ts        parse args, own the period window, write output files, format the stdout JSON
   └─ resolve.ts   topic (title or Qxxx) → Wikidata QID → article title per language
-  └─ collect.ts   articles → monthly views → 12-month period totals + changePct
-       └─ client.ts   all HTTP: Pageviews REST, MediaWiki Action API, Wikidata; retry, no cache
-  └─ charts.ts   perLanguage → Vega-Lite → SVG string; svgToPng via resvg
+  └─ collect.ts   articles + edition traffic → monthly views → 12-month period totals + changePct + metrics
+       └─ client.ts   all HTTP: Pageviews REST (per-article, aggregate), MediaWiki Action API, Wikidata; retry, no cache
+       └─ metrics/index.ts   computeLanguageMetrics(): applies metrics in order, rounds at the output boundary
+            └─ stats.ts (median/mean/mad/normalCdf/round/safeLog), normalize.ts (share per million), config.ts (thresholds)
+  └─ charts.ts   perLanguage → Vega-Lite (sharePerMillion) → SVG string; svgToPng via resvg
   └─ report.ts   SVG + data → one-page A4 PDF (pdfkit + svg-to-pdfkit)
 dates.ts        Month = 'YYYY-MM' UTC string; all date math goes through here
 ```
@@ -41,16 +43,18 @@ Key invariants — respect these when editing:
 - **Every command prints exactly one JSON object to stdout** and nothing else (logs/errors go to stderr). Callers parse stdout. `ok: true|false` gates the shape.
 - **Complete months only.** `lastCompleteMonth` steps back so in-progress months are never fetched; `FIRST_AVAILABLE_MONTH` (2015-07) clamps the start. Periods are consecutive 12-month blocks ending at `to` (`splitPeriods`); `changePct` is last block vs previous.
 - **Multiple `--topic` = a basket**: their monthly views are summed per language.
+- **Normalisation base**: for every language with an article, `editionMonthly` fetches the whole edition's user pageviews; 404 there is an `ApiError`. `metrics.sharePerMillion` = views / edition × 1e6 (edition 0 → 0). `metrics: null` for `no_article` / `no_data`.
+- **Metric functions are pure** (`scripts/src/metrics/`): number arrays in, numbers out, full precision; rounding only in `metrics/index.ts`. Thresholds go in `metrics/config.ts`. Specs for upcoming metrics are in `.specs/`.
 - **`--article lang="Title"`** overrides the Wikidata-resolved article for that language (used after a user picks a `suggestion`).
 - Failure modes are typed: `ResolveError` (ambiguous / not-found topic → exit 2, returns `candidates`) and `ApiError` (network/HTTP → exit 1). `cli.ts` maps them to `{ok:false, error, hint}`.
 - Language handling: Wikipedia code → Wikidata sitelink key via `siteFor` (`uk` → `ukwiki`). Ukrainian is `uk`, not `ua`.
 
 ## Output
 
-Each `analyze` run writes to `output/<YYYYMMDD-HHMMSS>/` (or `<DIR>/wiki-trends-<stamp>/` with `--out-dir DIR`): `data.json` (full data incl. per-month `monthly` series), `chart.svg`, `chart.png` (resvg, DejaVu fonts — this is what the agent displays in chat, since hosts can't show SVG), and `report-<lang>.pdf` if `--report`. SKILL.md step 5 requires the agent to Read the PNG and embed/link the chart and PDF in every reply. `output/` is gitignored. Note the stdout JSON **strips the `monthly` arrays** (kept only in `data.json`) to keep the agent's context small.
+Each `analyze` run writes to `output/<YYYYMMDD-HHMMSS>/` (or `<DIR>/wiki-trends-<stamp>/` with `--out-dir DIR`): `data.json` (full data incl. per-month `monthly` series of `{month, views, editionViews, sharePerMillion}`), `chart.svg`, `chart.png` (resvg, DejaVu fonts — this is what the agent displays in chat, since hosts can't show SVG), and `report-<lang>.pdf` if `--report`. SKILL.md step 5 requires the agent to Read the PNG and embed/link the chart and PDF in every reply. `output/` is gitignored. Note the stdout JSON **strips the `monthly` arrays** (kept only in `data.json`) to keep the agent's context small.
 
 ## Report/chart notes
 
 - Fonts: bundled DejaVu (`dejavu-fonts-ttf`) for Cyrillic support; PDF registers them as `"R"`/`"B"`.
 - Report + chart are bilingual (`en`/`uk`) via the `LABELS` table in `report.ts`; `--report-lang` selects, default `en`.
-- Never compare raw view counts across languages in output — editions differ hugely in size; compare `changePct`. This rule is enforced in `SKILL.md`'s answer guidance.
+- Never compare raw view counts across languages in output — editions differ hugely in size; compare `metrics.sharePerMillion.last12Avg` (level) and `changePct` (direction). This rule is enforced in `SKILL.md`'s answer guidance.
