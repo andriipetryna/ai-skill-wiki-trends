@@ -33,6 +33,10 @@ export const LABELS = {
       "Share = article views per million pageviews of the whole language edition (not per million people).",
       "A single article is a proxy for the topic.",
     ],
+    redirectsCaveat: (on: boolean) =>
+      on
+        ? "Views of redirects (alternative titles, up to 25 per article) are included."
+        : "Redirect views are excluded; renamed articles may show artificial drops.",
   },
   uk: {
     table: "За мовами",
@@ -52,6 +56,10 @@ export const LABELS = {
       "Частка = переглядів статті на мільйон усіх переглядів мовного розділу (не на мільйон людей).",
       "Одна стаття — лише проксі теми.",
     ],
+    redirectsCaveat: (on: boolean) =>
+      on
+        ? "Враховано перегляди перенаправлень (альтернативних назв, до 25 на статтю)."
+        : "Перенаправлення не враховано; перейменовані статті можуть показувати штучне падіння.",
   },
 } as const;
 
@@ -66,6 +74,8 @@ export interface ReportInput {
   langs: string[];
   from: string;
   to: string;
+  /** whether redirect views were summed into the articles */
+  redirects: boolean;
 }
 
 export async function writeReport(r: ReportInput): Promise<string> {
@@ -150,7 +160,7 @@ export async function writeReport(r: ReportInput): Promise<string> {
   // Limitations: as many as fit on the page
   y = heading(doc, t.caveats, X, y);
   doc.font("R").fontSize(8).fillColor(INK_2);
-  const caveats = [...t.caveatList, ...missingNotes(r)];
+  const caveats = [...t.caveatList, t.redirectsCaveat(r.redirects), ...missingNotes(r)];
   for (const c of caveats) {
     if (y + doc.heightOfString(c, { width: W - 10 }) > FOOTER_Y - 6) break;
     doc.text("•", X, y, { width: 10 });

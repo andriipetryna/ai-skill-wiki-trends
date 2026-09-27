@@ -3,7 +3,7 @@ name: wiki-trends
 description: Fetch and compare Wikipedia pageviews for a topic across language editions (Wikimedia Pageviews API), with a chart and a one-page PDF report. Use when a user asks whether interest in a topic is growing, compares interest between languages, or wants a shareable report on topic interest from Wikipedia.
 compatibility: Requires Node.js >= 22.18 and network access to wikimedia.org, wikipedia.org, wikidata.org and the npm registry (first run only).
 metadata:
-  version: "0.5.0"
+  version: "0.6.0"
 ---
 
 # Wikipedia interest trends (MVP)
@@ -24,6 +24,7 @@ The first run installs dependencies automatically (`npm ci`, ~30 s). The command
    - `--topic`: the **English Wikipedia article title**, e.g. "інтервальне голодування" → `"Intermittent fasting"`, "астрономія" → `"Astronomy"`. Repeat `--topic` to sum several related articles, e.g. learning English → `--topic "English language" --topic "English as a second or foreign language"`. A Wikidata QID (`Q333`) also works. For a title in another language add `--from-lang uk`.
    - `--langs`: Wikipedia language codes, comma-separated (uk, pl, cs, de, fr, es, it, pt, ro, hu, tr, en …). Ukrainian is `uk`, not `ua`.
    - `--article pl="Tytuł"` (repeatable): use this exact article for that language instead of the Wikidata link, e.g. after the user picked one of `suggestions`.
+   - `--no-redirects` excludes views of alternative titles (rarely needed).
    - Period: `--years N` (default 3), `--months N`, or `--from YYYY-MM --to YYYY-MM`. Only complete months are used.
    - Report: add `--report --report-lang uk` (or `en`, matching the user's language) when the user wants something to share. Optional `--title "..."` and `--notes "..."` (at most 3 sentences of your interpretation, with no new numbers).
 2. **Run `scripts/wt analyze ...`** as a single command.

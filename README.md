@@ -25,8 +25,8 @@ wiki-trends/
     └── src/
         ├── cli.ts        # resolve | analyze → a single JSON object on stdout
         ├── resolve.ts    # topic → Wikidata QID → article title in each language
-        ├── client.ts     # Wikimedia REST (per-article + edition aggregate), MediaWiki API, Wikidata; retry on 429/5xx
-        ├── collect.ts    # monthly views + edition traffic, a "basket" of several topics, 12-month periods and % change
+        ├── client.ts     # Wikimedia REST (per-article + edition aggregate), MediaWiki API (incl. redirects), Wikidata; retry on 429/5xx
+        ├── collect.ts    # monthly views (article + its redirects) + edition traffic, a "basket" of several topics, 12-month periods and % change
         ├── dates.ts      # month handling
         ├── charts.ts     # Vega-Lite → SVG (share per million), resvg → PNG
         ├── report.ts     # pdfkit → one-page PDF (en/uk, Cyrillic via DejaVu)
@@ -43,10 +43,11 @@ The results of each run are saved in `output/<timestamp>/` (or `<DIR>/wiki-trend
 | Command | What it does |
 |---|---|
 | `resolve --topic T --langs pl,cs` | shows which articles match the topic in each language |
-| `analyze --topic T [--topic T2] --langs pl,cs [--years N \| --months N \| --from YYYY-MM --to YYYY-MM] [--article pl="Tytuł"] [--report --report-lang uk --title ... --notes ...] [--out-dir DIR]` | data, chart (SVG+PNG), optional PDF |
+| `analyze --topic T [--topic T2] --langs pl,cs [--years N \| --months N \| --from YYYY-MM --to YYYY-MM] [--article pl="Tytuł"] [--no-redirects] [--report --report-lang uk --title ... --notes ...] [--out-dir DIR]` | data, chart (SVG+PNG), optional PDF |
 
 What `analyze` returns for each language:
-- `totalViews` and `avgMonthlyViews` — view volume;
+- `totalViews` and `avgMonthlyViews` — view volume, including views of the article's redirects (old / alternative titles, up to 25 per article; `--no-redirects` turns this off);
+- `redirectsIncluded` — how many redirect titles were summed in;
 - `periods` — totals for consecutive 12-month blocks ending at the last complete month;
 - `changePct` — change of the last block relative to the previous one;
 - `metrics.sharePerMillion` — views per million pageviews of the whole language edition (`median`, `last12Avg`); this is what makes languages comparable and removes edition-wide traffic shifts. The chart plots this share;
@@ -62,8 +63,7 @@ Verified against real API responses: for "Intermittent fasting" (Q1666254) Wikid
    - confidence score with explanations;
    - ranking languages by user-defined weights.
 2. **Caching.** Past months never change, so they can be cached forever; this will speed up follow-up queries.
-3. **Redirects.** Summing views of alternative titles so that renamed articles don't produce an artificial drop.
-4. **Tests and evals:**
+3. **Tests and evals:**
    - unit tests on synthetic data with a known answer;
    - e2e tests against a fake API;
    - agent runs on a cheap model, checking that every number in the answer is present in the JSON.

@@ -1,10 +1,10 @@
 // Data pipeline: topics -> articles per language -> monthly views + edition traffic -> metrics.
-import { articleMonthly, editionMonthly } from "./client.ts";
+import { articleMonthly, editionMonthly, redirects } from "./client.ts";
 import { monthRange, type Month } from "./dates.ts";
 import { computeLanguageMetrics, type LanguageMetrics, type MetricPoint } from "./metrics/index.ts";
 import { resolveTopic, searchEdition, type Candidate, type Resolution } from "./resolve.ts";
 
-export const VERSION = "0.5.0";
+export const VERSION = "0.6.0";
 
 export interface CollectParams {
   topics: string[];
@@ -14,6 +14,8 @@ export interface CollectParams {
   articles: Record<string, string[]>;
   from: Month;
   to: Month;
+  /** add views of redirects (old / alternative titles) to each article; default true */
+  redirects?: boolean;
 }
 
 export interface Period {
@@ -26,6 +28,8 @@ export interface LanguageResult {
   lang: string;
   status: "ok" | "no_article" | "no_data";
   articles: string[];
+  /** how many redirect titles were added to `articles` (their views are summed in) */
+  redirectsIncluded: number;
   missingTopics: string[];
   /** when a topic has no linked article in this language: search results from that edition */
   suggestions?: Candidate[];
@@ -64,6 +68,7 @@ export async function collect(p: CollectParams): Promise<{ resolution: Resolutio
       const empty = {
         lang,
         articles: titles,
+        redirectsIncluded: 0,
         missingTopics,
         ...(suggestions.length ? { suggestions } : {}),
         totalViews: 0,
@@ -75,13 +80,31 @@ export async function collect(p: CollectParams): Promise<{ resolution: Resolutio
       };
       if (titles.length === 0) return { ...empty, status: "no_article" };
 
+      // Renamed articles keep receiving views through their old titles: count those too.
+      // A Set dedupes redirects shared by several basket articles (or equal to another article).
+      const norm = (t: string) => t.replace(/_/g, " ");
+      const all = new Set(titles.map(norm));
+      const articleCount = all.size;
+      if (p.redirects ?? true) {
+        const found = await Promise.all(
+          titles.map((t) =>
+            redirects(lang, t).catch((e: Error) => {
+              process.stderr.write(`wiki-trends: redirects of ${lang}:"${t}" skipped: ${e.message}\n`);
+              return [];
+            }),
+          ),
+        );
+        for (const r of found.flat()) all.add(norm(r));
+      }
+      const redirectsIncluded = all.size - articleCount;
+
       // Several topics = a basket: views are summed per month. Edition traffic is the normalisation base.
       const [edition, ...series] = await Promise.all([
         editionMonthly(lang, p.from, p.to),
-        ...titles.map((t) => articleMonthly(lang, t, p.from, p.to)),
+        ...[...all].map((t) => articleMonthly(lang, t, p.from, p.to)),
       ]);
       const views = months.map((m) => series.reduce((acc, s) => acc + (s?.get(m) ?? 0), 0));
-      if (views.every((v) => v === 0)) return { ...empty, status: "no_data" };
+      if (views.every((v) => v === 0)) return { ...empty, redirectsIncluded, status: "no_data" };
 
       const total = views.reduce((a, b) => a + b, 0);
       const periods = splitPeriods(months, views);
@@ -91,6 +114,7 @@ export async function collect(p: CollectParams): Promise<{ resolution: Resolutio
       return {
         ...empty,
         status: "ok",
+        redirectsIncluded,
         totalViews: total,
         avgMonthlyViews: Math.round(total / months.length),
         periods,

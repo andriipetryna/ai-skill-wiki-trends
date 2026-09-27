@@ -29,8 +29,8 @@ Pipeline lives in `scripts/src/`, entry point `cli.ts`. Data flows one direction
 ```
 cli.ts        parse args, own the period window, write output files, format the stdout JSON
   └─ resolve.ts   topic (title or Qxxx) → Wikidata QID → article title per language
-  └─ collect.ts   articles + edition traffic → monthly views → 12-month period totals + changePct + metrics
-       └─ client.ts   all HTTP: Pageviews REST (per-article, aggregate), MediaWiki Action API, Wikidata; retry, no cache
+  └─ collect.ts   articles (+ their redirects) + edition traffic → monthly views → 12-month period totals + changePct + metrics
+       └─ client.ts   all HTTP: Pageviews REST (per-article, aggregate), MediaWiki Action API (incl. redirects), Wikidata; retry, no cache
        └─ metrics/index.ts   computeLanguageMetrics(): applies metrics in order, rounds at the output boundary
             └─ stats.ts (median/mean/mad/normalCdf/round/safeLog), normalize.ts (share per million), config.ts (thresholds)
   └─ charts.ts   perLanguage → Vega-Lite (sharePerMillion) → SVG string; svgToPng via resvg
@@ -45,6 +45,7 @@ Key invariants — respect these when editing:
 - **Multiple `--topic` = a basket**: their monthly views are summed per language.
 - **Normalisation base**: for every language with an article, `editionMonthly` fetches the whole edition's user pageviews; 404 there is an `ApiError`. `metrics.sharePerMillion` = views / edition × 1e6 (edition 0 → 0). `metrics: null` for `no_article` / `no_data`.
 - **Metric functions are pure** (`scripts/src/metrics/`): number arrays in, numbers out, full precision; rounding only in `metrics/index.ts`. Thresholds go in `metrics/config.ts`. Specs for upcoming metrics are in `.specs/`.
+- **Redirects** (on by default, `--no-redirects` turns off): per language, each article's ns-0 redirects (≤ 25 per article, `client.redirects`) are added to the title set (deduplicated) and their views summed in; `redirectsIncluded` counts them. A failed redirects lookup is logged to stderr and skipped, never fatal. The report caveat follows the flag (`redirectsCaveat`).
 - **`--article lang="Title"`** overrides the Wikidata-resolved article for that language (used after a user picks a `suggestion`).
 - Failure modes are typed: `ResolveError` (ambiguous / not-found topic → exit 2, returns `candidates`) and `ApiError` (network/HTTP → exit 1). `cli.ts` maps them to `{ok:false, error, hint}`.
 - Language handling: Wikipedia code → Wikidata sitelink key via `siteFor` (`uk` → `ukwiki`). Ukrainian is `uk`, not `ua`.

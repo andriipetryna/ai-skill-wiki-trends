@@ -90,6 +90,18 @@ export async function mw<T>(lang: string, params: Record<string, string>): Promi
   return data;
 }
 
+/** Titles in namespace 0 that redirect to `title`, capped. */
+export async function redirects(lang: string, title: string, cap = 25): Promise<string[]> {
+  const data = await mw<{ query?: { pages?: Array<{ redirects?: Array<{ ns: number; title: string }> }> } }>(lang, {
+    action: "query",
+    titles: title,
+    prop: "redirects",
+    rdnamespace: "0",
+    rdlimit: String(cap),
+  });
+  return (data.query?.pages?.[0]?.redirects ?? []).map((r) => r.title);
+}
+
 export async function wikidata<T>(params: Record<string, string>): Promise<T> {
   const qs = new URLSearchParams({ format: "json", formatversion: "2", ...params });
   const url = `https://www.wikidata.org/w/api.php?${qs.toString()}`;

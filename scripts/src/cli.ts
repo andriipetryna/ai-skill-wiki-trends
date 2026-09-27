@@ -17,6 +17,7 @@ const HELP = `wiki-trends ${VERSION}
   resolve  --topic T [--topic T2] --langs pl,cs [--from-lang en]
   analyze  --topic T [--topic T2 ...] --langs pl,cs [--from-lang en]
            [--years 2 | --months 18 | --from YYYY-MM --to YYYY-MM] [--article pl="Tytuł"]
+           [--no-redirects]  exclude views of redirects (old/alternative titles; included by default)
            [--report] [--report-lang uk|en] [--title "..."] [--notes "..."] [--out file.pdf]
            [--out-dir DIR]   write files to DIR/wiki-trends-<timestamp>/ (default: <skill>/output/<timestamp>/)
 Topic = English Wikipedia title (or title in --from-lang) or a Wikidata QID.\n--article lang=Title uses that article in that language instead of the Wikidata link.`;
@@ -29,6 +30,7 @@ async function main(argv: string[]): Promise<{ code: number; output: Output }> {
     parsed = parseArgs({
       args: argv,
       allowPositionals: true,
+      allowNegative: true,
       options: {
         topic: { type: "string", multiple: true },
         article: { type: "string", multiple: true },
@@ -44,6 +46,7 @@ async function main(argv: string[]): Promise<{ code: number; output: Output }> {
         notes: { type: "string" },
         out: { type: "string" },
         "out-dir": { type: "string" },
+        redirects: { type: "boolean", default: true },
         help: { type: "boolean", short: "h" },
       },
     });
@@ -86,14 +89,15 @@ async function main(argv: string[]): Promise<{ code: number; output: Output }> {
     if (!MONTH_RE.test(from) || !MONTH_RE.test(to) || from > to) return fail(2, "--from/--to must be YYYY-MM and from <= to");
     if (from < FIRST_AVAILABLE_MONTH) from = FIRST_AVAILABLE_MONTH;
 
-    const data = await collect({ topics, langs, fromLang, articles, from, to });
+    const redirects = v.redirects;
+    const data = await collect({ topics, langs, fromLang, articles, from, to, redirects });
     const uiLang: UiLang = v["report-lang"] === "uk" ? "uk" : "en";
 
     // Output files: data.json (incl. monthly series), chart.svg + chart.png, optional report PDF
     const stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
     const outDir = v["out-dir"] ? join(resolve(process.cwd(), v["out-dir"]), `wiki-trends-${stamp}`) : join(SKILL_ROOT, "output", stamp);
     mkdirSync(outDir, { recursive: true });
-    writeFileSync(join(outDir, "data.json"), JSON.stringify({ version: VERSION, query: { topics, langs, fromLang, from, to }, ...data }, null, 1));
+    writeFileSync(join(outDir, "data.json"), JSON.stringify({ version: VERSION, query: { topics, langs, fromLang, from, to, redirects }, ...data }, null, 1));
     const chartSvg = await renderViewsChart(data.perLanguage, langs, LABELS[uiLang].yTitle);
     const chartPath = chartSvg ? join(outDir, "chart.svg") : null;
     const chartPngPath = chartSvg ? join(outDir, "chart.png") : null;
@@ -113,6 +117,7 @@ async function main(argv: string[]): Promise<{ code: number; output: Output }> {
         langs,
         from,
         to,
+        redirects,
         ...(v.title ? { title: v.title } : {}),
         ...(v.notes ? { notes: v.notes } : {}),
       });
@@ -122,11 +127,11 @@ async function main(argv: string[]): Promise<{ code: number; output: Output }> {
       code: 0,
       output: {
         ok: true,
-        query: { topics, articles, langs, fromLang, from, to },
+        query: { topics, articles, langs, fromLang, from, to, redirects },
         resolution: data.resolution,
         // monthly series stays in data.json to keep the agent's context small
         perLanguage: data.perLanguage.map(({ monthly: _m, ...rest }) => rest),
-        caveats: [...LABELS.en.caveatList],
+        caveats: [...LABELS.en.caveatList, LABELS.en.redirectsCaveat(redirects)],
         files: { data: join(outDir, "data.json"), chart: chartPath, chartPng: chartPngPath, report: reportPath },
       },
     };
