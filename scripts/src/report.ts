@@ -20,13 +20,13 @@ export const LABELS = {
     chart: "Monthly share of the edition's traffic",
     notes: "Interpretation (written by the AI agent)",
     caveats: "Limitations",
-    cols: ["Lang", "Article", "Total views", "Avg / month", "Per million", "Last 12 mo", "Change"],
+    cols: ["Lang", "Article", "Total views", "Avg / month", "Per million", "Last 12 mo", "YoY share"],
     meta: (langs: string, from: string, to: string, date: string) => `Wikipedia pageviews · ${langs} · ${from} – ${to} · generated ${date}`,
     defaultTitle: (t: string) => `Interest in “${t}” on Wikipedia`,
     noArticle: "no article",
     noData: "no data",
     yTitle: "Views per million pageviews of the edition",
-    footer: "Data: Wikimedia Pageviews API (agent=user, all-access). Change = last period vs the previous one.",
+    footer: "Data: Wikimedia Pageviews API (agent=user, all-access). YoY = last 12 months vs the previous 12, on share per million.",
     caveatList: [
       "Pageviews show curiosity, not willingness to pay: a signal for further validation.",
       "Raw views are not comparable across languages: editions differ greatly in size.",
@@ -43,13 +43,13 @@ export const LABELS = {
     chart: "Частка в трафіку розділу за місяць",
     notes: "Інтерпретація (написав AI-агент)",
     caveats: "Обмеження",
-    cols: ["Мова", "Стаття", "Усього", "Сер. / міс", "На мільйон", "Ост. 12 міс", "Зміна"],
+    cols: ["Мова", "Стаття", "Усього", "Сер. / міс", "На мільйон", "Ост. 12 міс", "Рік-до-року"],
     meta: (langs: string, from: string, to: string, date: string) => `Перегляди Wikipedia · ${langs} · ${from} – ${to} · створено ${date}`,
     defaultTitle: (t: string) => `Інтерес до «${t}» у Wikipedia`,
     noArticle: "немає статті",
     noData: "немає даних",
     yTitle: "Переглядів на мільйон переглядів розділу",
-    footer: "Дані: Wikimedia Pageviews API (agent=user, all-access). Зміна = останній період проти попереднього.",
+    footer: "Дані: Wikimedia Pageviews API (agent=user, all-access). Рік-до-року = останні 12 міс. проти попередніх 12, на частці на мільйон.",
     caveatList: [
       "Перегляди відображають цікавість, а не готовність платити: це сигнал для подальшої перевірки.",
       "Сирі перегляди не порівнюються між мовами: розділи дуже різні за розміром.",
@@ -122,7 +122,7 @@ export async function writeReport(r: ReportInput): Promise<string> {
             fmt(row.avgMonthlyViews),
             row.metrics ? row.metrics.sharePerMillion.last12Avg.toFixed(1) : "—",
             last ? fmt(last.views) : "—",
-            signed(row.changePct),
+            signed(row.metrics?.yoy?.sharePct ?? null),
           ]
         : [row.lang, row.articles.join(" + ") || "—", "—", "—", "—", "—", row.status === "no_article" ? t.noArticle : t.noData];
     cx = X;

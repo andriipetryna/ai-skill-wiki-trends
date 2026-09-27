@@ -49,7 +49,7 @@ What `analyze` returns for each language:
 - `totalViews` and `avgMonthlyViews` — view volume, including views of the article's redirects (old / alternative titles, up to 25 per article; `--no-redirects` turns this off);
 - `redirectsIncluded` — how many redirect titles were summed in;
 - `periods` — totals for consecutive 12-month blocks ending at the last complete month;
-- `changePct` — change of the last block relative to the previous one;
+- `metrics.yoy` — year-over-year change: last 12 months vs the previous 12 (`method: "last12_vs_prev12"`; second half vs first half for ranges under 2 years). `sharePct` is on share per million (the headline number), `viewsPct` on raw views and `editionPct` on the whole edition, to explain why they can differ; `null` when there is nothing to compare with;
 - `metrics.sharePerMillion` — views per million pageviews of the whole language edition (`median`, `last12Avg`); this is what makes languages comparable and removes edition-wide traffic shifts. The chart plots this share;
 - `status: "no_article"` + `suggestions` — Wikidata has no article in this language, so the CLI searches for candidates in the edition itself; the chosen article can be passed via `--article pl="…"`.
 

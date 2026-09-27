@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`**wiki-trends**` is an **Agent Skill** (see `SKILL.md`), not a general app. It is a bundled CLI that, for a topic, finds the matching Wikipedia articles across language editions, pulls monthly pageviews from the Wikimedia Pageviews API, computes period-over-period change, and optionally renders a chart and a one-page PDF report. `SKILL.md` is the contract the consuming agent reads; keep it in sync with CLI behaviour and the `metadata.version` / `VERSION` fields.
+`**wiki-trends**` is an **Agent Skill** (see `SKILL.md`), not a general app. It is a bundled CLI that, for a topic, finds the matching Wikipedia articles across language editions, pulls monthly pageviews from the Wikimedia Pageviews API, computes year-over-year change of the topic's share of edition traffic, and optionally renders a chart and a one-page PDF report. `SKILL.md` is the contract the consuming agent reads; keep it in sync with CLI behaviour and the `metadata.version` / `VERSION` fields.
 
 ## Commands
 
@@ -29,10 +29,10 @@ Pipeline lives in `scripts/src/`, entry point `cli.ts`. Data flows one direction
 ```
 cli.ts        parse args, own the period window, write output files, format the stdout JSON
   └─ resolve.ts   topic (title or Qxxx) → Wikidata QID → article title per language
-  └─ collect.ts   articles (+ their redirects) + edition traffic → monthly views → 12-month period totals + changePct + metrics
+  └─ collect.ts   articles (+ their redirects) + edition traffic → monthly views → 12-month period totals + metrics
        └─ client.ts   all HTTP: Pageviews REST (per-article, aggregate), MediaWiki Action API (incl. redirects), Wikidata; retry, no cache
        └─ metrics/index.ts   computeLanguageMetrics(): applies metrics in order, rounds at the output boundary
-            └─ stats.ts (median/mean/mad/normalCdf/round/safeLog), normalize.ts (share per million), config.ts (thresholds)
+            └─ stats.ts (median/mean/mad/normalCdf/round/safeLog), normalize.ts (share per million), yoy.ts (periodChange), config.ts (thresholds)
   └─ charts.ts   perLanguage → Vega-Lite (sharePerMillion) → SVG string; svgToPng via resvg
   └─ report.ts   SVG + data → one-page A4 PDF (pdfkit + svg-to-pdfkit)
 dates.ts        Month = 'YYYY-MM' UTC string; all date math goes through here
@@ -41,9 +41,10 @@ dates.ts        Month = 'YYYY-MM' UTC string; all date math goes through here
 Key invariants — respect these when editing:
 
 - **Every command prints exactly one JSON object to stdout** and nothing else (logs/errors go to stderr). Callers parse stdout. `ok: true|false` gates the shape.
-- **Complete months only.** `lastCompleteMonth` steps back so in-progress months are never fetched; `FIRST_AVAILABLE_MONTH` (2015-07) clamps the start. Periods are consecutive 12-month blocks ending at `to` (`splitPeriods`); `changePct` is last block vs previous.
+- **Complete months only.** `lastCompleteMonth` steps back so in-progress months are never fetched; `FIRST_AVAILABLE_MONTH` (2015-07) clamps the start. Periods are consecutive 12-month blocks ending at `to` (`splitPeriods`), kept as transparent sums.
 - **Multiple `--topic` = a basket**: their monthly views are summed per language.
 - **Normalisation base**: for every language with an article, `editionMonthly` fetches the whole edition's user pageviews; 404 there is an `ApiError`. `metrics.sharePerMillion` = views / edition × 1e6 (edition 0 → 0). `metrics: null` for `no_article` / `no_data`.
+- **YoY** (`metrics.yoy`): `periodChange` compares the sum of the last 12 months with the previous 12 (n ≥ 24, earlier months ignored) or second half vs first half (6 ≤ n < 24, no seasonality control); `null` if shorter or the base is 0. `sharePct` (on share, the headline) is computed first; `yoy` is `null` whenever it is, and `viewsPct` / `editionPct` give raw-views and whole-edition context.
 - **Metric functions are pure** (`scripts/src/metrics/`): number arrays in, numbers out, full precision; rounding only in `metrics/index.ts`. Thresholds go in `metrics/config.ts`. Specs for upcoming metrics are in `.specs/`.
 - **Redirects** (on by default, `--no-redirects` turns off): per language, each article's ns-0 redirects (≤ 25 per article, `client.redirects`) are added to the title set (deduplicated) and their views summed in; `redirectsIncluded` counts them. A failed redirects lookup is logged to stderr and skipped, never fatal. The report caveat follows the flag (`redirectsCaveat`).
 - **`--article lang="Title"`** overrides the Wikidata-resolved article for that language (used after a user picks a `suggestion`).
@@ -58,4 +59,4 @@ Each `analyze` run writes to `output/<YYYYMMDD-HHMMSS>/` (or `<DIR>/wiki-trends-
 
 - Fonts: bundled DejaVu (`dejavu-fonts-ttf`) for Cyrillic support; PDF registers them as `"R"`/`"B"`.
 - Report + chart are bilingual (`en`/`uk`) via the `LABELS` table in `report.ts`; `--report-lang` selects, default `en`.
-- Never compare raw view counts across languages in output — editions differ hugely in size; compare `metrics.sharePerMillion.last12Avg` (level) and `changePct` (direction). This rule is enforced in `SKILL.md`'s answer guidance.
+- Never compare raw view counts across languages in output — editions differ hugely in size; compare `metrics.sharePerMillion.last12Avg` (level) and `metrics.yoy.sharePct` (direction). This rule is enforced in `SKILL.md`'s answer guidance.

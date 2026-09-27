@@ -4,7 +4,7 @@ import { monthRange, type Month } from "./dates.ts";
 import { computeLanguageMetrics, type LanguageMetrics, type MetricPoint } from "./metrics/index.ts";
 import { resolveTopic, searchEdition, type Candidate, type Resolution } from "./resolve.ts";
 
-export const VERSION = "0.6.0";
+export const VERSION = "0.7.0";
 
 export interface CollectParams {
   topics: string[];
@@ -37,8 +37,6 @@ export interface LanguageResult {
   avgMonthlyViews: number;
   /** consecutive 12-month blocks ending at `to` (two halves if the range is < 24 months) */
   periods: Period[];
-  /** % change of the last period vs the previous one */
-  changePct: number | null;
   /** null for no_article / no_data */
   metrics: LanguageMetrics | null;
   monthly: MetricPoint[];
@@ -74,7 +72,6 @@ export async function collect(p: CollectParams): Promise<{ resolution: Resolutio
         totalViews: 0,
         avgMonthlyViews: 0,
         periods: [],
-        changePct: null,
         metrics: null,
         monthly: [],
       };
@@ -108,8 +105,6 @@ export async function collect(p: CollectParams): Promise<{ resolution: Resolutio
 
       const total = views.reduce((a, b) => a + b, 0);
       const periods = splitPeriods(months, views);
-      const last = periods.at(-1);
-      const prev = periods.at(-2);
       const { metrics, points } = computeLanguageMetrics(months, views, months.map((m) => edition.get(m) ?? 0));
       return {
         ...empty,
@@ -118,7 +113,6 @@ export async function collect(p: CollectParams): Promise<{ resolution: Resolutio
         totalViews: total,
         avgMonthlyViews: Math.round(total / months.length),
         periods,
-        changePct: last && prev && prev.views > 0 ? Math.round((last.views / prev.views - 1) * 1000) / 10 : null,
         metrics,
         monthly: points,
       };
